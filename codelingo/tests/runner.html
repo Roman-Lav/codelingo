@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CodeLingo tests</title>
+  <style>
+    body { font: 14px/1.4 ui-monospace, Menlo, monospace; margin: 16px; }
+    .ok { color: #157a2c; } .bad { color: #b3261e; } .skip { color: #8a6d00; }
+    iframe { width: 390px; height: 844px; border: 1px solid #999; }
+  </style>
+</head>
+<body>
+  <h1>CodeLingo tests</h1>
+  <pre id="log"></pre>
+  <div id="result" data-status="RUNNING"></div>
+  <!-- App data: loaded the same way the app loads it -->
+  <script src="../i18n.js"></script>
+  <script src="../courses/_core.js"></script>
+  <script src="../courses/html.js"></script>
+  <script src="../courses/css.js"></script>
+  <script src="../courses/js.js"></script>
+  <script src="../courses/ts.js"></script>
+  <script src="../courses/py.js"></script>
+  <script src="../courses/sql.js"></script>
+  <script src="harness.js"></script>
+  <script src="test-data.js"></script>
+  <script src="test-i18n.js"></script>
+  <script src="test-files.js"></script>
+  <script src="test-app.js"></script>
+  <script>T.run();</script>
+</body>
+</html>
