@@ -1,0 +1,7 @@
+{
+  "enabledPlugins": {
+    "frontend-design@anthropic-plugin-directory": true,
+    "session-report@anthropic-plugin-directory": true,
+    "claude-md-management@anthropic-plugin-directory": true
+  }
+}
