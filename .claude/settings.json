@@ -3,5 +3,21 @@
     "frontend-design@anthropic-plugin-directory": true,
     "session-report@anthropic-plugin-directory": true,
     "claude-md-management@anthropic-plugin-directory": true
+  },
+  "hooks": {
+    "SubagentStop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/autocommit.sh", "timeout": 30, "statusMessage": "Auto-commit" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/autocommit.sh", "timeout": 30, "statusMessage": "Auto-commit" }
+        ]
+      }
+    ]
   }
 }
