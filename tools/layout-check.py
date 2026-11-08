@@ -127,15 +127,35 @@ MEASURE_JS = r"""
   for (const el of els.filter((e) => e.matches('button, input, textarea, select, h1, .bar'))) {
     const r = el.getBoundingClientRect();
     if (el.closest('pre, .symbar, .bank, .slot')) continue; // horizontally scrollable on purpose
-    if (el.closest('.screen') && !inLesson) continue; // scrolls under the status bar by design; checked at scroll 0 below
+    // Side insets (landscape notch) apply to everything, including content of .screen.
+    if (r.left < inset.left - 0.5 || r.right > vw - inset.right + 0.5) out.push(['safe-area', `${name(el)} spans ${Math.round(r.left)}..${Math.round(r.right)}px, side insets ${inset.left}/${inset.right}`]);
+    if (el.closest('.screen') && !inLesson) continue; // scrolls under the status bar by design; top/bottom checked via #screen below
     if (clippedByScroller(el)) continue; // scrolled out of #lessonBody: not visible until scrolled into its box
     if (r.top < inset.top - 0.5 && r.bottom > 0) out.push(['safe-area', `${name(el)} top ${Math.round(r.top)}px < inset ${inset.top}px`]);
     if (r.bottom > vh - inset.bottom + 0.5 && r.top < vh) out.push(['safe-area', `${name(el)} bottom ${Math.round(r.bottom)}px > ${vh - inset.bottom}px (home indicator)`]);
-    if (r.left < inset.left - 0.5 || r.right > vw - inset.right + 0.5) out.push(['safe-area', `${name(el)} spans ${Math.round(r.left)}..${Math.round(r.right)}px, side insets ${inset.left}/${inset.right}`]);
   }
   if (!inLesson) {
     const first = document.querySelector('.screen > *');
     if (first && first.getBoundingClientRect().top < inset.top - 0.5) out.push(['safe-area', `${name(first)} starts under the status bar`]);
+  }
+
+  // R8 shell: the document never scrolls, the tab bar sits on the bottom edge, and the
+  // scroll areas stay between the status bar and the bars (otherwise content hides under them).
+  if (!inLesson) {
+    const de = document.documentElement;
+    window.scrollTo(0, de.scrollHeight);
+    if (de.scrollHeight > vh + 0.5) out.push(['covered', `R8: document is ${de.scrollHeight}px tall, screen ${vh}px (document must not scroll)`]);
+    if (window.scrollY !== 0) out.push(['covered', `R8: document scrolled to ${window.scrollY}px`]);
+    window.scrollTo(0, 0);
+    const scrEl = document.querySelector('#screen'), sr = scrEl.getBoundingClientRect();
+    const tb = document.querySelector('#tabbar').getBoundingClientRect();
+    if (Math.abs(tb.bottom - vh) > 0.5) out.push(['covered', `R8: tab bar bottom ${Math.round(tb.bottom)}px, screen bottom ${vh}px`]);
+    if (sr.bottom > tb.top + 0.5) out.push(['covered', `#screen ends at ${Math.round(sr.bottom)}px, under the tab bar (top ${Math.round(tb.top)}px)`]);
+    const padTop = parseFloat(getComputedStyle(scrEl).paddingTop) || 0;
+    if (sr.top < inset.top - 0.5 && sr.top + padTop < inset.top - 0.5) out.push(['safe-area', `#screen content starts at ${Math.round(sr.top + padTop)}px, under the status bar (${inset.top}px)`]);
+  } else {
+    const lb = document.querySelector('#lessonBody').getBoundingClientRect(), lf = document.querySelector('.lfoot').getBoundingClientRect();
+    if (lb.bottom > lf.top + 0.5) out.push(['covered', `#lessonBody ends at ${Math.round(lb.bottom)}px, under the footer (top ${Math.round(lf.top)}px)`]);
   }
 
   // covered: scrolled to the end (window and the #screen scroller), the last content must be above the tab bar

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.4';
+  const VERSION = '1.0.5';
   const KEY = 'codelingo.v1';
   const LANGS = ['en', 'ru', 'uk', 'cs'];
   const LANG_NAMES = { en: 'English', ru: 'Русский', uk: 'Українська', cs: 'Čeština' };
@@ -551,8 +551,11 @@
   function toast(msg) {
     const el = $('#toast'); el.textContent = msg;
     // Keep the toast just above the tab bar, whatever its real height (safe area, font size).
-    const bar = $('#tabbar');
-    document.documentElement.style.setProperty('--tabbar-h', (bar && bar.offsetHeight ? bar.offsetHeight : 0) + 'px');
+    // In a lesson the tab bar is hidden: sit above the lesson footer (it includes the home-indicator inset).
+    const bar = $('#tabbar'); const foot = $('#lesson') && !$('#lesson').hidden ? $('#lesson .lfoot') : null;
+    const h = bar && bar.offsetHeight ? bar.offsetHeight : foot ? foot.offsetHeight : 0;
+    if (h) document.documentElement.style.setProperty('--tabbar-h', h + 'px');
+    else document.documentElement.style.removeProperty('--tabbar-h'); // CSS fallback: 64px + safe-area-inset-bottom
     el.hidden = false;
     clearTimeout(toast.tm); toast.tm = setTimeout(() => { el.hidden = true; }, 2200);
   }

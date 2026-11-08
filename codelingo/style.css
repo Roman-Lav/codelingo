@@ -7,6 +7,7 @@
   --accent: #F09749;
   --accent-ink: #24170B;
   --on-accent: #FFFFFF; /* text on ok/bad/danger fills */
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 4' shape-rendering='crispEdges' fill='%232A2A2A'%3E%3Cpath d='M0 0h2v1H0zM6 0h2v1H6zM1 1h2v1H1zM5 1h2v1H5zM2 2h4v1H2zM3 3h2v1H3z'/%3E%3C/svg%3E"); /* select arrow, colour = --ink */
   --ok: #2E9E4F;
   --bad: #E0483E;
   --ok-bg: #E3F4E8;
@@ -27,12 +28,14 @@
   :root:not([data-theme="light"]) {
     --bg: #17110B; --surface: #24170B; --ink: #F7F4EF; --muted: #B5A99C; --line: #F7F4EF;
     --code-bg: #2E2015; --ok-bg: #173521; --bad-bg: #3F1A19; --eye: #17110B; --ok: #3DBE63; --bad: #F0605A; --on-accent: #FFFFFF;
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 4' shape-rendering='crispEdges' fill='%23F7F4EF'%3E%3Cpath d='M0 0h2v1H0zM6 0h2v1H6zM1 1h2v1H1zM5 1h2v1H5zM2 2h4v1H2zM3 3h2v1H3z'/%3E%3C/svg%3E");
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #17110B; --surface: #24170B; --ink: #F7F4EF; --muted: #B5A99C; --line: #F7F4EF;
   --code-bg: #2E2015; --ok-bg: #173521; --bad-bg: #3F1A19; --eye: #17110B; --ok: #3DBE63; --bad: #F0605A; --on-accent: #FFFFFF;
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 4' shape-rendering='crispEdges' fill='%23F7F4EF'%3E%3Cpath d='M0 0h2v1H0zM6 0h2v1H6zM1 1h2v1H1zM5 1h2v1H5zM2 2h4v1H2zM3 3h2v1H3z'/%3E%3C/svg%3E");
   color-scheme: dark;
 }
 
@@ -65,7 +68,7 @@ svg.pix rect { fill: currentColor; }
 body.in-lesson .screen, body.in-lesson .tabbar { display: none; }
 header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; margin-bottom: 8px; }
 h1 { font-size: var(--fs-title); }
-.sub { color: var(--muted); margin-bottom: 14px; }
+.sub { color: var(--muted); margin-bottom: 16px; }
 .h2 { font-size: var(--fs-caption); color: var(--muted); margin: 24px 0 8px; }
 .back { display: flex; align-items: center; gap: 8px; font-weight: 600; min-height: 44px; min-width: 44px; padding: 0 12px 0 0; }
 .back .ic { width: 10px; }
@@ -82,9 +85,9 @@ h1 { font-size: var(--fs-title); }
 @keyframes hop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 
-.card { display: block; width: 100%; text-align: left; background: var(--surface); border: 2px solid var(--line); box-shadow: 3px 3px 0 var(--line); padding: 14px; }
+.card { display: block; width: 100%; text-align: left; background: var(--surface); border: 2px solid var(--line); box-shadow: 3px 3px 0 var(--line); padding: 16px; }
 button.card:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--line); }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .course { display: flex; flex-direction: column; gap: 12px; min-height: 96px; }
 .badge { display: inline-block; align-self: flex-start; background: var(--accent); color: var(--accent-ink); font: 600 var(--fs-caption)/1 var(--sans); padding: 4px 8px; border: 2px solid var(--line); }
 .cname { font-weight: 600; }
@@ -100,13 +103,15 @@ button.card:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 
 .lt { flex: 1; font-weight: 600; }
 .st { font-size: var(--fs-caption); font-weight: 600; color: var(--accent); }
 .lesson-item.locked { opacity: .45; box-shadow: none; }
+.lesson-item.locked .st { color: var(--muted); } /* accent is only for actions and the selected state */
 
 /* ---------- Tab bar ---------- */
 .tabbar {
   flex: none; display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface); border-top: 2px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom);
-  padding-left: max(env(safe-area-inset-left), calc((100% - var(--col)) / 2));
-  padding-right: max(env(safe-area-inset-right), calc((100% - var(--col)) / 2));
+  /* same edges as the content of .screen */
+  padding-left: max(16px, env(safe-area-inset-left), calc((100% - var(--col)) / 2 + 16px));
+  padding-right: max(16px, env(safe-area-inset-right), calc((100% - var(--col)) / 2 + 16px));
 }
 .tab { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; font-size: var(--fs-caption); font-weight: 600; color: var(--muted); }
 .tab svg { width: 24px; height: 22px; }
@@ -115,22 +120,22 @@ button.card:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 
 /* ---------- Profile ---------- */
 .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .small { font-size: var(--fs-caption); color: var(--muted); }
-.krow { padding: 12px 0; border-bottom: 2px dotted var(--muted); }
-.krow .bar { height: 8px; margin-top: 8px; }
-.lvl { font-size: var(--fs-caption); font-weight: 600; color: var(--accent); flex: none; }
+.krow { padding: 12px 0; }
+.krow .bar { height: 4px; margin-top: 8px; border: 0; background: var(--code-bg); }
+.lvl { font-size: var(--fs-caption); font-weight: 600; color: var(--muted); flex: none; }
 .week { display: flex; gap: 8px; margin-top: 8px; }
 .week span { flex: 1; text-align: center; font-size: var(--fs-caption); color: var(--muted); }
 .week i { display: block; height: 18px; border: 2px solid var(--line); margin-bottom: 4px; }
 .week i.on { background: var(--accent); }
 
 /* ---------- Settings ---------- */
-.set { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 2px dotted var(--muted); }
+.set { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 2px dotted var(--muted); }
 .set.col { flex-direction: column; align-items: stretch; gap: 10px; }
 .seg { display: flex; border: 2px solid var(--line); background: var(--surface); }
 .seg button { flex: 1; min-height: 44px; padding: 8px 4px; font-weight: 600; }
 .seg button + button { border-left: 2px solid var(--line); }
 .seg button.on { background: var(--accent); color: var(--accent-ink); }
-select { font: inherit; font-size: var(--fs-body); min-height: 44px; padding: 8px 10px; border: 2px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 0; -webkit-appearance: none; appearance: none; }
+select { font: inherit; font-size: var(--fs-body); min-height: 44px; padding: 8px 36px 8px 12px; border: 2px solid var(--line); background: var(--surface) var(--chevron) no-repeat right 12px center / 16px 8px; color: var(--ink); border-radius: 0; -webkit-appearance: none; appearance: none; }
 .sw { position: relative; display: inline-block; flex: none; padding: 8px 0; } /* 28px track + padding = 44px tap target */
 .sw input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; margin: 0; }
 .sw i { display: block; width: 50px; height: 28px; border: 2px solid var(--line); background: var(--bg); position: relative; }
@@ -159,7 +164,7 @@ select { font: inherit; font-size: var(--fs-body); min-height: 44px; padding: 8p
 .x svg { width: 16px; height: 16px; }
 .lbody { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 16px 16px; max-width: 560px; width: 100%; margin: 0 auto; }
 .q { font-weight: 600; margin: 4px 0 16px; }
-pre.code { background: var(--code-bg); border: 2px solid var(--line); padding: 12px; overflow-x: auto; font-size: var(--code-size); line-height: 1.55; margin-bottom: 14px; white-space: pre; }
+pre.code { background: var(--code-bg); border: 2px solid var(--line); padding: 12px; overflow-x: auto; font-size: var(--code-size); line-height: 1.55; margin-bottom: 16px; white-space: pre; }
 .opts { display: flex; flex-direction: column; gap: 10px; }
 .opts.locked { pointer-events: none; }
 .opt { min-height: 50px; padding: 12px 16px; text-align: left; border: 2px solid var(--line); background: var(--surface); box-shadow: 3px 3px 0 var(--line); }
@@ -180,8 +185,8 @@ pre.code.has-fill { cursor: text; } /* the whole block is the tap target of the 
 .sym:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--line); }
 
 .slot { min-height: 64px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; padding: 8px 0 10px; border-bottom: 2px dashed var(--line); margin-bottom: 8px; }
-.bank { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.tok { padding: 9px 11px; font-size: var(--code-size); border: 2px solid var(--line); background: var(--surface); box-shadow: 2px 2px 0 var(--line); }
+.bank { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.tok { padding: 8px 12px; font-size: var(--code-size); border: 2px solid var(--line); background: var(--surface); box-shadow: 2px 2px 0 var(--line); }
 .tok:disabled { opacity: .15; box-shadow: none; }
 .tok.hl { border-color: var(--accent); box-shadow: 2px 2px 0 var(--accent); animation: hop .5s steps(3) 3; }
 
@@ -211,9 +216,10 @@ pre.code.has-fill { cursor: text; } /* the whole block is the tap target of the 
 .bubble { position: fixed; z-index: 50; top: calc(env(safe-area-inset-top) + 60px); right: max(12px, env(safe-area-inset-right)); max-width: min(300px, calc(100vw - 24px)); background: var(--surface); border: 2px solid var(--line); box-shadow: 3px 3px 0 var(--line); padding: 8px 12px; }
 /* In a lesson the bubble is moved into the lesson column right under .ltop, in the flow,
    so it never covers the question or the options (R7). */
-.lesson .bubble { position: relative; z-index: auto; top: auto; right: auto; flex: none; width: min(536px, calc(100% - 24px)); max-width: none; margin: 4px auto 8px; }
-.lesson .bubble::before { right: 30px; }
+.lesson .bubble { position: relative; z-index: auto; top: auto; right: auto; flex: none; width: min(536px, calc(100% - 24px)); max-width: none; margin: 4px auto 8px; padding: 8px 12px; background: var(--code-bg); border: 0; box-shadow: none; font-weight: 400; font-size: var(--fs-body); }
+.lesson .bubble pre { background: var(--surface); }
 .bubble::before { content: ""; position: absolute; top: -10px; right: 22px; width: 0; height: 0; border: 8px solid transparent; border-bottom-color: var(--line); border-top: 0; }
+.lesson .bubble::before { top: -8px; right: 30px; border-bottom-color: var(--code-bg); } /* not a button: no frame, no shadow */
 .bubble pre { margin-top: 6px; padding: 6px 8px; background: var(--code-bg); font-size: var(--code-size); white-space: pre-wrap; word-break: break-word; }
 .bubble[hidden], .toast[hidden] { display: none; }
 /* --tabbar-h is measured from #tabbar in JS when the toast is shown. */
