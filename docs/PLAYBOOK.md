@@ -23,6 +23,9 @@
 | `feature-cycle` | авто или `/feature-cycle` | цикл builder → tester ∥ reviewer с короткими промптами и максимум 3 итерациями |
 | `release` | авто или `/release` | бамп версии → тесты → сборка → публикация → инструкция по установке |
 | `caveman` | «caveman mode» | сверхкраткие ответы, меньше выходных токенов (скачан из github.com/akramsystems/caveman, MIT) |
+| `responsive-check` | авто | скриншоты страницы в нескольких размерах + поиск переполнения (скачан из github.com/petrovicistefan/claude-code-plugins, MIT; Python + Chrome, без npm) |
+| `design-critique` | авто или `/design-critique` | разбор дизайна: иерархия, консистентность, удобство (из плагина Anthropic Design, без его 9 MCP-коннекторов) |
+| `accessibility-review` | авто или `/accessibility-review` | аудит WCAG 2.1 AA: контраст, зоны нажатия, клавиатура, screen reader (оттуда же) |
 | `ios-application-dev` | только `/ios-application-dev` | справочник UIKit/SwiftUI/HIG. Для PWA нужен редко, поэтому автозагрузка отключена и он не тратит токены |
 
 Глобальный скилл `phone-pwa` (`~/.claude/skills/`) уже покрывает особенности PWA на iPhone. Проект ему соответствует.
@@ -35,6 +38,8 @@
 |---|---|
 | `code-review`, `pr-review-toolkit`, `code-simplifier`, `claude-security` (плагины) | дублируют встроенные `/code-review`, `/simplify`, `/security-review` |
 | Token Shield | 22 КБ текста при вызове + Python MCP-сервер; его полезные правила перенесены в раздел 2 |
+| Плагин Design (Anthropic) целиком | тянет 9 MCP-серверов (Slack, Figma, Linear, Gmail…) и ~620 ток в каждую сессию — взяты только 2 нужных скилла |
+| ux-ui-audit, consistent-ui | 18–21 КБ при вызове, пробы ux-ui-audit требуют браузерного MCP; основное покрывают layout-check + design-critique |
 | Superpowers | большой набор общих скиллов (TDD и т. п.), постоянная нагрузка выше пользы для проекта такого размера |
 | Axe Accessibility, Perf Profiler, Responsive Check | нужны Node/npm или MCP-сервер, а Node на этом Mac не запускается; доступность и 320 px уже проверяют тесты `app:` |
 | expo, Flutter-плагины | проект не на React Native или Flutter |
@@ -84,6 +89,7 @@
 | `tools/bump-version.sh [patch\|minor\|major\|X.Y.Z]` | поднимает `VERSION` и `CACHE` вместе |
 | `python3 tools/build.py` | `dist/web/` (PWA для хостинга) + `dist/codelingo.html` (один файл, всё встроено) |
 | `tools/verify-build.sh` | сборка + проверка, что обе версии реально запускаются |
+| `python3 tools/layout-check.py [--devices se1,ipad] [--dark] [--code l] [--lang cs]` | раскладка всех экранов на 10 устройствах (320 px … iPad, альбомная, десктоп) с эмуляцией выреза/home indicator: переполнение, safe area, перекрытия, обрезанный текст, зоны нажатия; скриншоты в `dist/layout/` |
 
 Зависимости: только `python3` и Google Chrome. Node и npm не нужны.
 
