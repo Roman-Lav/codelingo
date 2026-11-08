@@ -1,0 +1,15 @@
+{
+  "name": "CodeLingo",
+  "short_name": "CodeLingo",
+  "description": "8-bit coding practice for juniors: HTML, CSS, JavaScript, TypeScript, Python, SQL.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F7F4EF",
+  "theme_color": "#F7F4EF",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
