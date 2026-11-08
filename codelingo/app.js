@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.3';
+  const VERSION = '1.0.4';
   const KEY = 'codelingo.v1';
   const LANGS = ['en', 'ru', 'uk', 'cs'];
   const LANG_NAMES = { en: 'English', ru: 'Русский', uk: 'Українська', cs: 'Čeština' };
@@ -166,12 +166,6 @@
     return Math.round(100 * (p.done.length / c.lessons.length) * (0.5 + 0.5 * acc));
   }
   function lvlName(k) { const l = t('lvl'); return k === 0 ? l[0] : k < 25 ? l[1] : k < 50 ? l[2] : k < 75 ? l[3] : k < 100 ? l[4] : l[5]; }
-  function streak() {
-    const d = new Date(); let n = 0;
-    if (!S.days[dayKey(d)]) d.setDate(d.getDate() - 1);
-    while (S.days[dayKey(d)] > 0) { n++; d.setDate(d.getDate() - 1); }
-    return n;
-  }
 
   /* ---------- Settings application ---------- */
   function applySettings() {
@@ -199,12 +193,9 @@
   function viewLearn() {
     return header('CodeLingo') + `<p class="sub">${esc(t('chooseLang'))}</p><div class="grid">` +
       COURSES.map((c) => {
-        const p = prog(c.id); const k = knowledge(c);
         return `<button class="card course" data-act="course" data-id="${c.id}">
           <span class="badge">${esc(c.tag)}</span>
           <span class="cname">${esc(c.name)}</span>
-          <span class="meta">${p.done.length}/${c.lessons.length} · ${k}%</span>
-          <span class="bar"><i style="width:${k}%"></i></span>
         </button>`;
       }).join('') + '</div>';
   }
@@ -225,31 +216,23 @@
   }
 
   function viewProfile() {
-    let xp = 0, ans = 0, ok = 0;
-    COURSES.forEach((c) => { const p = prog(c.id); xp += p.xp; ans += p.ans; ok += p.ok; });
     const todayXp = S.days[dayKey()] || 0;
     const goal = S.settings.goal;
     const week = [];
     for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); week.push({ on: (S.days[dayKey(d)] || 0) > 0, label: d.toLocaleDateString(S.settings.lang, { weekday: 'short' }).slice(0, 2) }); }
     return header(t('profile')) + `
-      <div class="stats3">
-        <div class="stat"><b>${xp}</b><span>${esc(t('totalXp'))}</span></div>
-        <div class="stat"><b>${streak()}</b><span>${esc(t('streak'))}</span></div>
-        <div class="stat"><b>${ans ? Math.round((100 * ok) / ans) : 0}%</b><span>${esc(t('accuracy'))}</span></div>
-      </div>
-      <div class="card">
-        <div class="row"><b>${esc(t('today'))}</b><span class="mono">${todayXp}/${goal} XP</span></div>
-        <div class="bar big"><i style="width:${Math.min(100, (100 * todayXp) / goal)}%"></i></div>
+      <div class="card today">
+        <div class="row"><b>${esc(t('today'))}</b><span class="goal">${todayXp}/${goal} XP</span></div>
+        <div class="bar big"><i style="width:${Math.min(100, (100 * todayXp) / goal)}%;"></i></div>
         <div class="small">${esc(t('week'))}</div>
         <div class="week">${week.map((w) => `<span><i class="${w.on ? 'on' : ''}"></i>${esc(w.label)}</span>`).join('')}</div>
       </div>
       <h2 class="h2">${esc(t('knowledge'))}</h2>` +
       COURSES.map((c) => {
-        const p = prog(c.id); const k = knowledge(c);
-        return `<div class="card krow">
+        const k = knowledge(c);
+        return `<div class="krow" data-id="${c.id}">
           <div class="row"><b>${esc(c.name)}</b><span class="lvl">${esc(lvlName(k))}</span></div>
-          <div class="bar"><i style="width:${k}%"></i></div>
-          <div class="row small"><span>${esc(t('lessons'))}: ${p.done.length}/${c.lessons.length}</span><span>${esc(t('accuracy'))}: ${p.ans ? Math.round((100 * p.ok) / p.ans) : 0}%</span><span class="mono">${k}%</span></div>
+          <div class="bar" aria-hidden="true"><i style="width:${k}%;"></i></div>
         </div>`;
       }).join('');
   }
@@ -344,7 +327,7 @@
     } else if (task.t === 'f') {
       const [a, b] = task.c.split('___');
       const w = Math.max(3, Math.max(...task.a.map((x) => x.length)) + 1);
-      h += `<pre class="code"><code>${esc(a)}<input id="ans" class="fill" style="width:${w + 1}ch" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">${esc(b)}</code></pre>` + symbar();
+      h += `<pre class="code has-fill" data-act="fillfocus"><code>${esc(a)}<input id="ans" class="fill" style="width:${w + 1}ch" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">${esc(b)}</code></pre>` + symbar();
     } else if (task.t === 'w') {
       if (task.c) h += codeBlock(task.c);
       h += `<textarea id="ans" class="write" rows="5" placeholder="${esc(t('typeCode'))}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>` + symbar();
@@ -451,12 +434,10 @@
     p.xp += LS.xp;
     S.days[dayKey()] = (S.days[dayKey()] || 0) + LS.xp;
     save();
-    const acc = Math.round((100 * LS.ok) / Math.max(1, LS.ans));
     $('#bar').firstElementChild.style.width = '100%';
     $('#sheet').hidden = true;
     $('#lessonBody').innerHTML = `<div class="finish">${mascotSVG('big jump')}
-      <h2>${esc(t('lessonDone'))}</h2>
-      <div class="stats3 two"><div class="stat"><b>+${LS.xp}</b><span>${esc(t('xp'))}</span></div><div class="stat"><b>${acc}%</b><span>${esc(t('accuracy'))}</span></div></div></div>`;
+      <h2>${esc(t('lessonDone'))}</h2></div>`;
     const btn = $('#checkBtn'); btn.className = 'btn'; btn.textContent = t('next'); btn.disabled = false;
     beep('done');
   }
@@ -468,14 +449,18 @@
     $('#lesson').hidden = true;
     document.body.classList.remove('in-lesson');
     render();
+    resetScroll();
   }
+  // R8: the document never scrolls, only #screen; a new screen opens from the top.
+  function resetScroll() { $('#screen').scrollTop = 0; }
 
   /* ---------- Mascot hints ---------- */
   let bubbleTimer = 0;
   function bubble(text, code) {
     const b = $('#bubble');
     b.innerHTML = code ? `${esc(text)}<pre>${esc(code)}</pre>` : esc(text);
-    b.classList.toggle('in-lesson', !!LS);
+    // In a lesson the bubble sits in the flow under the top bar, so it never covers the task (R7).
+    if (LS) $('#lesson .ltop').after(b); else if (b.parentNode !== document.body || b.nextElementSibling !== $('#toast')) $('#toast').before(b);
     b.hidden = false;
     clearTimeout(bubbleTimer);
     bubbleTimer = setTimeout(hideBubble, 6000);
@@ -564,7 +549,11 @@
   }
 
   function toast(msg) {
-    const el = $('#toast'); el.textContent = msg; el.hidden = false;
+    const el = $('#toast'); el.textContent = msg;
+    // Keep the toast just above the tab bar, whatever its real height (safe area, font size).
+    const bar = $('#tabbar');
+    document.documentElement.style.setProperty('--tabbar-h', (bar && bar.offsetHeight ? bar.offsetHeight : 0) + 'px');
+    el.hidden = false;
     clearTimeout(toast.tm); toast.tm = setTimeout(() => { el.hidden = true; }, 2200);
   }
 
@@ -574,9 +563,10 @@
     if (!el) { if (!e.target.closest('#bubble')) hideBubble(); return; }
     const act = el.dataset.act;
     switch (act) {
-      case 'tab': tab = el.dataset.tab; courseId = null; render(); window.scrollTo(0, 0); break;
-      case 'course': courseId = el.dataset.id; render(); window.scrollTo(0, 0); break;
-      case 'back': courseId = null; render(); break;
+      case 'tab': tab = el.dataset.tab; courseId = null; render(); resetScroll(); break;
+      case 'course': courseId = el.dataset.id; render(); resetScroll(); break;
+      case 'back': courseId = null; render(); resetScroll(); break;
+      case 'fillfocus': { const inp = $('#ans', el); if (inp && !inp.readOnly && e.target !== inp) inp.focus(); break; }
       case 'lesson': startLesson(courseId, Number(el.dataset.i)); break;
       case 'mascot': if ($('#bubble').hidden) hint(); else { hideBubble(); if (LS) hint(); } break;
       case 'quit': exitLesson(false); break;

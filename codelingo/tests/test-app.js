@@ -175,12 +175,20 @@
     assert.eq(app.doc.documentElement.style.getPropertyValue('--code-size'), '18px', 'code size');
   });
 
-  test('app: profile shows totals from stored progress', async () => {
-    const app = await T.loadApp({ state: { settings: { lang: 'en' }, prog: { js: { done: [0, 1], ans: 10, ok: 8, xp: 150 } }, days: {} } });
+  test('app: profile shows today/goal and a level row per course from stored progress', async () => {
+    const d = new Date(); const dk = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const app = await T.loadApp({ state: { settings: { lang: 'en', goal: 20 }, prog: { js: { done: [0, 1], ans: 10, ok: 8, xp: 150 } }, days: { [dk]: 15 } } });
     app.$('.tab[data-tab="profile"]').click();
-    const nums = app.$$('.stats3 .stat b').map((b) => b.textContent);
-    assert.eq(nums[0], '150', 'total XP');
-    assert.eq(nums[2], '80%', 'accuracy');
+    const goal = app.$('.today .goal'); assert(goal, 'today card');
+    assert.eq(goal.textContent.trim(), '15/20 XP', 'today XP / goal');
+    assert.eq(app.$$('.krow').length, 6, 'one level row per course');
+    const js = app.$('.krow[data-id="js"]'); assert(js, 'JS row');
+    // k = round(100 * 2/10 * (0.5 + 0.5 * 0.8)) = 18 -> "Novice"; the number itself is not shown.
+    assert.eq(js.querySelector('.lvl').textContent, window.I18N.en.lvl[1], 'JS level word');
+    assert.eq(js.querySelector('.bar i').style.width, '18%', 'JS bar width = k');
+    assert.eq(app.$('.krow[data-id="py"] .lvl').textContent, window.I18N.en.lvl[0], 'untouched course: Not started');
+    assert(!app.$('.stats3'), 'no totals block');
+    assert(!/\d\s*%/.test(app.$('#screen').textContent), 'no percentages in profile text');
   });
 
   test('app: corrupted localStorage does not crash the app', async () => {
@@ -202,7 +210,7 @@
     const app = await T.loadApp({ state: { settings: 'oops', prog: { js: {}, py: { done: 'x', ans: '3', ok: null }, css: null }, days: [] } });
     assert.eq(app.$$('.course').length, 6, 'home renders');
     app.$('.tab[data-tab="profile"]').click();
-    assert(app.$('.stats3'), 'profile renders');
+    assert(app.$('.today .goal') && app.$$('.krow .lvl').length === 6, 'profile renders today card and level rows');
     assert(!/NaN|undefined/.test(app.$('#screen').textContent), 'no NaN/undefined in profile');
   });
 

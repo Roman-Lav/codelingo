@@ -103,6 +103,14 @@ MEASURE_JS = r"""
     const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0;
   };
   const inLesson = !document.querySelector('#lesson').hidden;
+  // R8: the document does not scroll; #screen and #lessonBody do. Content scrolled out of such a
+  // container is clipped (not on screen), so position checks skip it; the container itself is checked.
+  const clippedByScroller = (el) => {
+    const sc = el.parentElement && el.parentElement.closest('#screen, #lessonBody');
+    if (!sc) return false;
+    const r = el.getBoundingClientRect(), c = sc.getBoundingClientRect();
+    return r.bottom > c.bottom + 0.5 || r.top < c.top - 0.5;
+  };
   const scope = inLesson ? document.querySelector('#lesson') : document.body;
   const els = [...scope.querySelectorAll('*')].filter(visible).filter((el) => !el.closest('svg') || el.tagName === 'svg');
 
@@ -120,6 +128,7 @@ MEASURE_JS = r"""
     const r = el.getBoundingClientRect();
     if (el.closest('pre, .symbar, .bank, .slot')) continue; // horizontally scrollable on purpose
     if (el.closest('.screen') && !inLesson) continue; // scrolls under the status bar by design; checked at scroll 0 below
+    if (clippedByScroller(el)) continue; // scrolled out of #lessonBody: not visible until scrolled into its box
     if (r.top < inset.top - 0.5 && r.bottom > 0) out.push(['safe-area', `${name(el)} top ${Math.round(r.top)}px < inset ${inset.top}px`]);
     if (r.bottom > vh - inset.bottom + 0.5 && r.top < vh) out.push(['safe-area', `${name(el)} bottom ${Math.round(r.bottom)}px > ${vh - inset.bottom}px (home indicator)`]);
     if (r.left < inset.left - 0.5 || r.right > vw - inset.right + 0.5) out.push(['safe-area', `${name(el)} spans ${Math.round(r.left)}..${Math.round(r.right)}px, side insets ${inset.left}/${inset.right}`]);
@@ -129,13 +138,14 @@ MEASURE_JS = r"""
     if (first && first.getBoundingClientRect().top < inset.top - 0.5) out.push(['safe-area', `${name(first)} starts under the status bar`]);
   }
 
-  // covered: at the bottom of the page the last content must be above the fixed bar
+  // covered: scrolled to the end (window and the #screen scroller), the last content must be above the tab bar
   if (!inLesson) {
-    window.scrollTo(0, document.documentElement.scrollHeight);
+    const scr = document.querySelector('#screen');
+    window.scrollTo(0, document.documentElement.scrollHeight); scr.scrollTop = scr.scrollHeight;
     const bar = document.querySelector('#tabbar').getBoundingClientRect();
     const last = [...document.querySelectorAll('.screen *')].filter(visible).reduce((m, el) => Math.max(m, el.getBoundingClientRect().bottom), 0);
     if (last > bar.top + 0.5) out.push(['covered', `content ends at ${Math.round(last)}px, tab bar starts at ${Math.round(bar.top)}px`]);
-    window.scrollTo(0, 0);
+    window.scrollTo(0, 0); scr.scrollTop = 0;
   } else {
     const foot = document.querySelector('.lfoot').getBoundingClientRect();
     if (foot.bottom > vh + 0.5) out.push(['covered', `lesson footer bottom ${Math.round(foot.bottom)}px is below the screen (${vh}px)`]);
@@ -164,6 +174,8 @@ MEASURE_JS = r"""
   // tap targets
   for (const el of els.filter((e) => e.matches('button:not([disabled]), select, input:not([type=hidden]), textarea, label.sw'))) {
     if (el.matches('input[type=checkbox]') && el.closest('label.sw')) continue;
+    // B4: a tap anywhere on the code block focuses the blank, so the block is its tap target.
+    if (el.matches('input.fill') && el.closest('pre.code') && el.closest('pre.code').getBoundingClientRect().height >= 43.5) continue;
     const r = el.getBoundingClientRect();
     if (r.width < 43.5 || r.height < 43.5) out.push(['tap', `${name(el)} is ${Math.round(r.width)}x${Math.round(r.height)}px`]);
   }
