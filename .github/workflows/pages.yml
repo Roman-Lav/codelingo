@@ -1,0 +1,54 @@
+# Test, build and publish CodeLingo to GitHub Pages on every push to main.
+# One-time setup: GitHub → repo → Settings → Pages → Source: "GitHub Actions".
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v1
+      # Ubuntu 24.04 runners restrict user namespaces, so Chrome's sandbox cannot start there.
+      - name: Tests
+        env:
+          CHROME: ${{ steps.chrome.outputs.chrome-path }}
+          CHROME_FLAGS: --no-sandbox
+          VERBOSE: '1'
+        run: codelingo/tests/run.sh
+      - name: Build and verify
+        env:
+          CHROME: ${{ steps.chrome.outputs.chrome-path }}
+          CHROME_FLAGS: --no-sandbox
+        run: tools/verify-build.sh
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
