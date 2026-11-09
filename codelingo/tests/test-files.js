@@ -42,10 +42,10 @@
     }
   });
 
-  test('files: style.css has no 100vh or dvh (R8: fixed inset shell)', async () => {
+  test('files: style.css has no vh/dvh/svh/lvh units (R8: fixed inset shell)', async () => {
     const css = (await fetchText('style.css')).replace(/\/\*[\s\S]*?\*\//g, '');
     const k = collector();
-    css.split('\n').forEach((line, i) => { if (/100vh|dvh/.test(line)) k.check(false, `style.css:${i + 1}: ${line.trim()}`); });
+    css.split('\n').forEach((line, i) => { if (/\d\s*[dsl]?vh\b/.test(line)) k.check(false, `style.css:${i + 1}: ${line.trim()}`); });
     k.done();
   });
 

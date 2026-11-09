@@ -231,6 +231,9 @@ pre.code.has-fill { cursor: text; } /* the whole block is the tap target of the 
 .key { flex: 1 1 0; min-width: 0; height: 44px; display: grid; place-items: center; padding: 0; background: var(--surface); color: var(--ink); border: 2px solid var(--line); box-shadow: var(--shadow); font: 400 var(--fs-body)/1 var(--sans); white-space: nowrap; overflow: hidden; }
 .key.fn { flex-grow: 1.5; font-size: var(--fs-caption); font-weight: 600; }
 .key.k-space { flex-grow: 4; }
+/* Symbol layers: 8 keys in the bottom row (Backspace moved there); glyph keys and space give up width. */
+.kbd:not([data-layer="abc"]) .kr:last-child :is(.k-left, .k-right, .k-enter, .k-bksp) { flex-grow: 1; }
+.kbd:not([data-layer="abc"]) .kr:last-child .k-space { flex-grow: 2; }
 .key.down, .key:active { transform: translate(3px, 3px); box-shadow: none; background: var(--accent); color: var(--accent-ink); }
 .kbd[data-shift="1"] .k-shift { background: var(--accent); color: var(--accent-ink); } /* next letter upper case */
 .kbd[data-shift="2"] .k-shift { background: var(--ink); color: var(--bg); text-decoration: underline; } /* caps lock */
@@ -244,7 +247,7 @@ pre.code.has-fill { cursor: text; } /* the whole block is the tap target of the 
   .key { height: 42px; }
   .write { min-height: 96px; }
 }
-.finish { display: flex; flex-direction: column; align-items: center; gap: 24px; padding-top: 12vh; text-align: center; }
+.finish { display: flex; flex-direction: column; align-items: center; gap: 24px; padding-top: 48px; text-align: center; }
 .finish h2 { font-size: var(--fs-title); }
 
 /* ---------- Feedback effects ---------- */

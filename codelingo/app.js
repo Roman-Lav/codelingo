@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.13';
+  const VERSION = '1.0.14';
   const KEY = 'codelingo.v1';
   const LANGS = ['en', 'ru', 'uk', 'cs'];
   const LANG_NAMES = { en: 'English', ru: 'Русский', uk: 'Українська', cs: 'Čeština' };
@@ -396,7 +396,12 @@
     }
     if (typed) renderEditor();
     // R13: the keyboard is docked under the Check footer for typed tasks until Check.
-    if (fresh) { kb.layer = 'abc'; kb.shift = 0; kb.shiftAt = 0; if (typed) renderKbd(); }
+    if (fresh) {
+      kb.layer = 'abc'; kb.shift = 0; kb.shiftAt = 0; if (typed) renderKbd();
+      announce(null);
+      const f = document.activeElement;
+      if (f && f !== document.body && $('#lesson').contains(f) && f.blur) f.blur(); // e.g. Check after "Continue"
+    }
     showKbd(typed && !cur.checked);
     $('#bar').firstElementChild.style.width = Math.round((100 * LS.done) / LS.total) + '%';
     if (fresh) {
@@ -502,7 +507,7 @@
     LS = null;
     music.stop(); clearTapRetry();
     hideBubble();
-    showKbd(false);
+    showKbd(false); announce(null);
     $('#lesson').hidden = true;
     document.body.classList.remove('in-lesson');
     render();
@@ -574,12 +579,22 @@
     const ci = $('.caret', ed);
     if (ci && ci.scrollIntoView) ci.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
+  // Screen readers hear the answer once typing pauses (~300 ms), not on every key.
+  let liveTimer = 0;
+  function announce(textNow) {
+    clearTimeout(liveTimer);
+    const live = $('#edlive'); if (!live) return;
+    if (textNow === null) { live.textContent = ''; return; }
+    liveTimer = setTimeout(() => { live.textContent = textNow; }, 300);
+  }
   function edit(fn) {
     const cur = LS && LS.cur;
     if (!typedTask(cur) || cur.checked) return;
+    const was = cur.text;
     fn(cur);
     renderEditor();
     $('#checkBtn').disabled = !canCheck();
+    if (cur.text !== was) announce(cur.text);
   }
   const insertText = (v) => edit((c) => { c.text = c.text.slice(0, c.caret) + v + c.text.slice(c.caret); c.caret += v.length; });
   const indent = () => (LS && LS.c.id === 'py' ? '    ' : '  ');
@@ -614,13 +629,14 @@
   // Layout data. Letters only in English, no language switch (R13).
   const KBD = {
     abc: [['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'], ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'], ['shift', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'bksp']],
-    num: [['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '_'], ['(', ')', '{', '}', '[', ']', '<', '>', '=', '+', '-'], ['"', "'", ';', ':', '.', ',', '*', '/', '!', '?', '&', 'bksp']],
-    sym: [['`', '~', '|', '\\', '^', '%', '$', '#', '@'], ['(', ')', '{', '}', '[', ']', '<', '>', '='], ['"', "'", ';', ':', '.', ',', '_', 'bksp']],
+    num: [['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '_'], ['(', ')', '{', '}', '[', ']', '<', '>', '=', '+', '-'], ['"', "'", ';', ':', '.', ',', '*', '/', '!', '?', '&']],
+    sym: [['`', '~', '|', '\\', '^', '%', '$', '#', '@'], ['(', ')', '{', '}', '[', ']', '<', '>', '='], ['"', "'", ';', ':', '.', ',', '_']],
   };
   const KBD_BOTTOM = {
     abc: ['L:num', 'left', 'space', 'right', 'tab', 'enter'],
-    num: ['L:abc', 'L:sym', 'left', 'space', 'right', 'tab', 'enter'],
-    sym: ['L:abc', 'L:num', 'left', 'space', 'right', 'tab', 'enter'],
+    // Symbol layers: Backspace sits in the bottom row, so no symbol row has more than 11 keys (R13).
+    num: ['L:abc', 'L:sym', 'left', 'space', 'right', 'tab', 'enter', 'bksp'],
+    sym: ['L:abc', 'L:num', 'left', 'space', 'right', 'tab', 'enter', 'bksp'],
   };
   const KEY_LABEL = { 'L:num': '123', 'L:abc': 'ABC', 'L:sym': '#+=', left: '◀︎', right: '▶︎', space: '', tab: 'Tab', enter: '⏎', bksp: '⌫', shift: '⇧' };
   const KEY_ARIA = { 'L:num': 'kNum', 'L:abc': 'kAbc', 'L:sym': 'kSym', left: 'kLeft', right: 'kRight', space: 'kSpace', tab: 'kTab', enter: 'kEnter', bksp: 'kBksp', shift: 'kShift' };
@@ -656,11 +672,11 @@
     $('#lesson').classList.toggle('kbd-on', on);
     if (!on) releaseAll();
   }
-  function pressKey(k) {
+  function pressKey(k, repeat = false) {
     const cur = LS && LS.cur;
     if (!typedTask(cur) || cur.checked) return;
     if (k === 'enter' && cur.task.t === 'f') { check(); return; } // fill: Enter = Check (its own sound)
-    beep('key');
+    if (!repeat) beep('key'); // one click per press, not per hold-repeat
     if (k.startsWith('L:')) { kb.layer = k.slice(2); renderKbd(); return; }
     switch (k) {
       case 'shift': {
@@ -705,7 +721,7 @@
     lastPointerAt = Date.now();
     pressKey(k);
     if (REPEAT.has(k)) {
-      const rep = () => { if (!held.has(e.pointerId) || $('#kbd').hidden) return; pressKey(k); h.timer = setTimeout(rep, 60); };
+      const rep = () => { if (!held.has(e.pointerId) || $('#kbd').hidden || modalEl) return; pressKey(k, true); h.timer = setTimeout(rep, 60); };
       h.timer = setTimeout(rep, 400);
     }
   }
@@ -726,7 +742,7 @@
   // At most one at a time. Focus goes to Cancel, Tab cycles inside, Esc / backdrop = cancel,
   // focus returns to the opener. The action fires once; a ghost tap right after closing is swallowed.
   let modalEl = null;
-  let ghostUntil = 0;
+  let ghost = null; // { x, y, until }: where the closing tap was
   function modal(titleKey, okKey, onOk, opts = {}) {
     if (modalEl) return;
     const opener = opts.opener || (document.activeElement instanceof HTMLElement ? document.activeElement : null);
@@ -743,17 +759,19 @@
       </div>`;
     const behind = ['#screen', '#tabbar', '#lesson'].map((sel) => $(sel)).filter(Boolean);
     let closed = false;
-    const close = (ok) => {
+    const close = (ok, ev) => {
       if (closed) return; // a double tap on the action can't fire it twice
       closed = true;
       document.removeEventListener('keydown', onKey, true);
-      behind.forEach((el) => { el.inert = false; });
+      behind.forEach((el) => { el.inert = false; el.removeAttribute('aria-hidden'); });
       wrap.remove(); modalEl = null;
-      ghostUntil = Date.now() + 400;
+      ghost = ev && ev.detail > 0 ? { x: ev.clientX, y: ev.clientY, until: Date.now() + 400 } : null;
       if (ok) onOk();
       const shown = (el) => el.isConnected && el.getClientRects().length > 0;
+      const scope = $('#lesson').hidden ? $('#screen') : $('#lesson');
       const back = opener && shown(opener) ? opener
-        : openerAct ? $$(`[data-act="${openerAct}"]`).find(shown) : null;
+        : (openerAct && $$(`[data-act="${openerAct}"]`).find(shown))
+          || $$('button:not([disabled]), [href], select, [tabindex]:not([tabindex="-1"])', scope).find(shown); // e.g. after quitting
       if (back) back.focus({ preventScroll: true });
     };
     const btns = () => $$('button', wrap);
@@ -769,18 +787,20 @@
     wrap.addEventListener('click', (e) => {
       e.stopPropagation(); // never reaches the app's [data-act] handler
       const m = e.target.closest('[data-m]');
-      if (m) close(m.dataset.m === 'ok');
+      if (m) close(m.dataset.m === 'ok', e);
     });
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(wrap);
     modalEl = wrap;
-    behind.forEach((el) => { el.inert = true; });
+    releaseAll(); // a held key must not keep repeating behind the modal
+    behind.forEach((el) => { el.inert = true; el.setAttribute('aria-hidden', 'true'); }); // aria-hidden: iOS < 15.5 has no inert
     btns()[0].focus({ preventScroll: true });
   }
-  // A real tap (detail > 0) right after a modal closed is the second half of a double tap: swallow it,
-  // so it can't hit whatever was under the action button (e.g. a lesson row after quitting).
+  // A real tap (detail > 0) within 24 px of the closing tap and 400 ms after it is the second half of a
+  // double tap: swallow it, so it can't hit what was under the button. Taps elsewhere work at once.
   document.addEventListener('click', (e) => {
-    if (!modalEl && e.detail > 0 && Date.now() < ghostUntil) { e.preventDefault(); e.stopPropagation(); }
+    if (modalEl || !ghost || e.detail <= 0 || Date.now() >= ghost.until) return;
+    if (Math.hypot(e.clientX - ghost.x, e.clientY - ghost.y) <= 24) { e.preventDefault(); e.stopPropagation(); }
   }, true);
 
   function toast(msg) {
@@ -833,7 +853,7 @@
     const cur = LS && LS.cur;
     if (!typedTask(cur) || cur.checked || e.ctrlKey || e.metaKey || e.altKey || modalEl) return;
     const a = document.activeElement;
-    if (a && a !== document.body && !(a.closest && a.closest('#kbd'))) return;
+    if (a && a !== document.body) return; // a focused key/button: Enter/Space activate it
     const map = { Backspace: 'bksp', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'enter' };
     if (map[e.key]) { e.preventDefault(); pressKey(map[e.key]); return; }
     if (e.key.length === 1) { e.preventDefault(); if (e.key === ' ') pressKey('space'); else if (cur && !cur.checked) insertText(e.key); }

@@ -267,4 +267,76 @@
       T.up(app, k, id);
     });
   });
+  test('kbd: at 320px every non-bottom key is >= 24px wide on all layers; Backspace in the bottom row of symbol layers', async () => {
+    const app = await T.loadApp({ state: OFF, size: [320, 568] });
+    const c = collector();
+    await withTask(app, { t: 'w', q: 'Write', a: ['x'] }, async () => {
+      const h0 = kbd(app).getBoundingClientRect().height;
+      for (const layer of ['abc', 'num', 'sym']) {
+        T.layer(app, layer);
+        const rows = app.$$('#kbd .kr');
+        c.check(rows.length === 4, `${layer}: 4 rows`);
+        c.check(Math.abs(kbd(app).getBoundingClientRect().height - h0) < 1, `${layer}: keyboard height changed`);
+        rows.slice(0, -1).forEach((row, i) => {
+          c.check(row.children.length <= 11, `${layer} row ${i + 1}: ${row.children.length} keys`);
+          [...row.children].forEach((k) => { const w = k.getBoundingClientRect().width; c.check(w >= 24, `${layer}: key ${k.dataset.k} is ${w.toFixed(1)}px wide`); });
+        });
+        const bottom = rows[rows.length - 1];
+        if (layer !== 'abc') {
+          c.check(bottom.lastElementChild.dataset.k === 'bksp' && bottom.children.length === 8, `${layer}: bottom row ends with Backspace (8 keys)`);
+          c.check(!rows.slice(0, -1).some((r) => r.querySelector('[data-k="bksp"]')), `${layer}: no Backspace in symbol rows`);
+        }
+        [...bottom.children].forEach((k) => c.check(k.scrollWidth <= k.clientWidth + 1 && k.getBoundingClientRect().width >= 24, `${layer}: bottom key ${k.dataset.k} clipped or narrow`));
+      }
+    });
+    c.done();
+  });
+
+  test('kbd: hardware keys — Enter/Space on a focused key activate it; after Continue focus leaves Check so typing works', async () => {
+    const app = await T.loadApp({ state: OFF });
+    await withTask(app, { t: 'w', q: 'Write', a: ['ab'] }, async () => {
+      const k = T.keyEl(app, 'q'); k.focus();
+      for (const key of ['Enter', ' ']) {
+        const ev = new app.win.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+        k.dispatchEvent(ev);
+        assert(!ev.defaultPrevented, `${JSON.stringify(key)} on a focused key is left to the button`);
+      }
+      assert.eq(text(app), '', 'the global handler typed nothing');
+      await sleep(850); k.click(); // the activation the browser does for Enter/Space
+      assert.eq(text(app), 'q', 'activation types the key');
+      T.tapKey(app, 'bksp'); T.typeText(app, 'ab');
+      const btn = app.$('#checkBtn'); btn.focus(); btn.click();
+      assert(app.$('#sheet').classList.contains('ok'), 'checked');
+      await sleep(420); btn.focus(); btn.click(); // Continue -> next task (the same write task)
+      assert(app.doc.activeElement === app.doc.body, 'focus left Check on the new task: ' + app.doc.activeElement.tagName);
+      app.doc.body.dispatchEvent(new app.win.KeyboardEvent('keydown', { key: 'z', bubbles: true, cancelable: true }));
+      assert.eq(text(app), 'z', 'hardware typing works on the next task');
+    });
+  });
+
+  test('kbd: holding Backspace clicks once, not on every repeat', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: true, music: false } } });
+    const log = fakeAudio(app.win);
+    await withTask(app, { t: 'w', q: 'Write', a: ['x'] }, async () => {
+      T.typeText(app, 'abcdefghij');
+      const n0 = log.osc;
+      const b = T.keyEl(app, 'bksp'); const id = T.down(app, b); await sleep(700); T.up(app, b, id);
+      assert(text(app).length <= 4, 'repeat deleted several characters: ' + text(app));
+      assert.eq(log.osc - n0, 1, 'one click for the whole hold');
+    });
+  });
+
+  test('kbd: the answer is announced politely ~300 ms after typing stops, not per key', async () => {
+    const app = await T.loadApp({ state: OFF });
+    await withTask(app, { t: 'w', q: 'Write', a: ['x'] }, async () => {
+      const live = app.$('#edlive');
+      assert(live && live.classList.contains('sr-only') && live.getAttribute('aria-live') === 'polite', 'polite sr-only region');
+      T.tapKey(app, 'a'); await sleep(150); T.tapKey(app, 'b'); await sleep(150);
+      assert.eq(live.textContent, '', 'nothing announced while typing');
+      await sleep(250);
+      assert.eq(live.textContent, 'ab', 'announced after the pause');
+      T.tapKey(app, 'left'); await sleep(350);
+      assert.eq(live.textContent, 'ab', 'caret moves do not re-announce');
+    });
+  });
 })();

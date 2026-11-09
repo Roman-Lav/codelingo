@@ -230,4 +230,42 @@
       assert(r.top === 0 && Math.abs(r.bottom - app.win.innerHeight) <= 1, 'pinned to the edges');
     } finally { L.tasks.forEach((x, i) => { Object.keys(x).forEach((k) => delete x[k]); Object.assign(x, saved[i]); }); }
   });
+  test('modal: background gets aria-hidden with inert and loses it on close', async () => {
+    const app = await T.loadApp({ state: seeded() });
+    openReset(app);
+    const ids = ['#screen', '#tabbar', '#lesson'];
+    assert(ids.every((s) => app.$(s).getAttribute('aria-hidden') === 'true' && app.$(s).inert), 'aria-hidden + inert while open');
+    key(app, 'Escape');
+    assert(ids.every((s) => !app.$(s).hasAttribute('aria-hidden') && !app.$(s).inert), 'removed on close');
+  });
+
+  test('modal: after Quit focus goes to the first focusable element of the visible screen', async () => {
+    const app = await T.loadApp();
+    openQuit(app);
+    app.$('.modal [data-m="ok"]').click();
+    const a = app.doc.activeElement;
+    assert(a !== app.doc.body && app.$('#screen').contains(a) && a.matches('button'), 'focus on a button of the screen, got ' + a.tagName + '.' + a.className);
+    assert(a === app.$$('#screen button')[0], 'the first one');
+  });
+
+  test('modal: a tap elsewhere right after Cancel works; a tap on the same spot is swallowed', async () => {
+    const app = await T.loadApp({ state: seeded() });
+    const tapAt = (el, x, y) => el.dispatchEvent(new app.win.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1, clientX: x, clientY: y }));
+    openReset(app);
+    const cancel = app.$('.modal .btn.ghost'); const r = cancel.getBoundingClientRect();
+    tapAt(cancel, r.left + 10, r.top + 10);
+    assert(!app.$('.modal'), 'Cancel closed it');
+    const tab = app.$('.tab[data-tab="profile"]'); const tr = tab.getBoundingClientRect();
+    assert(Math.hypot(tr.left - r.left, tr.top - r.top) > 24, 'precondition: far from Cancel');
+    tapAt(tab, tr.left + 10, tr.top + 10);
+    assert(app.$('.tab.on[data-tab="profile"]'), 'a tap elsewhere works at once');
+    app.$('.tab[data-tab="settings"]').click(); openReset(app);
+    const c2 = app.$('.modal .btn.ghost'); const r2 = c2.getBoundingClientRect();
+    tapAt(c2, r2.left + 10, r2.top + 10);
+    let reached = false; const mark = () => { reached = true; };
+    app.doc.addEventListener('click', mark);
+    tapAt(app.doc.elementFromPoint(r2.left + 12, r2.top + 12) || app.doc.body, r2.left + 12, r2.top + 12);
+    app.doc.removeEventListener('click', mark);
+    assert(!reached, 'the second half of a double tap on the same spot is swallowed');
+  });
 })();
