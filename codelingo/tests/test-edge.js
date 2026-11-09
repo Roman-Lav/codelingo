@@ -411,4 +411,78 @@
     const calls = log.calls; const lastSusp = calls.lastIndexOf('suspend'); const lastRes = calls.lastIndexOf('resume');
     assert(lastRes > lastSusp, 'resume issued after the suspend: ' + calls.join(','));
   });
+
+  // ---- profile stats / wrong answer edge cases (commit 2b0be46) ----
+  const NBSP = ' ';
+  const pstat = (app, id) => { const r = app.$(`.krow[data-id="${id}"]`); return { pct: r.querySelector('.kpct').textContent, les: r.querySelector('.kles').textContent, acc: r.querySelector('.kacc').textContent }; };
+  const seed = (prog, lang = 'en') => ({ settings: { lang, sound: false, music: false }, prog });
+
+  test('edge: profile ans>0 with ok=0 shows 0% (not a dash)', async () => {
+    const app = await T.loadApp({ state: seed({ js: { done: [], ans: 7, ok: 0, xp: 0 } }) });
+    app.$('.tab[data-tab="profile"]').click();
+    assert.eq(pstat(app, 'js').acc, `Correct answers 0% (0${NBSP}of${NBSP}7)`, '0% caption');
+    assert(!/NaN|undefined|null/.test(app.$('.klist').textContent), 'no NaN/undefined/null in profile');
+  });
+
+  test('edge: stored ok>ans is clamped by sanitize and the profile never exceeds 100%', async () => {
+    const { sanitize } = (await T.loadApp()).win.__codelingo;
+    const out = sanitize({ prog: { js: { done: [], ans: 10, ok: 50, xp: 0 }, py: { done: [], ans: 0, ok: 5, xp: 0 } } });
+    assert.eq(out.prog.js.ok, 10, 'js ok clamped to ans');
+    assert.eq(out.prog.py.ok, 0, 'py ok clamped to 0 when ans=0');
+    const app = await T.loadApp({ state: seed({ js: { done: [0], ans: 10, ok: 50, xp: 0 }, py: { done: [], ans: 0, ok: 5, xp: 0 }, css: { done: [], ans: 3, ok: 1e9, xp: 0 } }) });
+    app.$('.tab[data-tab="profile"]').click();
+    assert.eq(pstat(app, 'js').acc, `Correct answers 100% (10${NBSP}of${NBSP}10)`, 'js capped at 100%');
+    assert.eq(pstat(app, 'css').acc, `Correct answers 100% (3${NBSP}of${NBSP}3)`, 'css capped at 100%');
+    assert.eq(pstat(app, 'py').acc, `Correct answers${NBSP}—`, 'py: no answers -> dash');
+    const nums = [...app.$('.klist').textContent.matchAll(/(\d+)\s*%/g)].map((m) => Number(m[1]));
+    assert(nums.length > 0 && nums.every((n) => n <= 100), 'percents > 100: ' + nums.join(','));
+  });
+
+  test('edge: course with all 10 lessons done shows "Lessons 10 of 10"', async () => {
+    const app = await T.loadApp({ state: seed({ js: { done: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], ans: 20, ok: 20, xp: 0 } }) });
+    app.$('.tab[data-tab="profile"]').click();
+    assert.eq(pstat(app, 'js').les, `Lessons 10${NBSP}of${NBSP}10`, 'lessons caption');
+    assert.eq(app.$$('.krow[data-id="js"] .segbar i').length, 10, '10 segments');
+  });
+
+  // Swap lesson 0 of js for one custom task, open it, run fn, restore (COURSES lives in the iframe, fresh per loadApp).
+  async function withTask(app, task, fn) {
+    const L = app.win.COURSES.find((cr) => cr.id === 'js').lessons[0];
+    const saved = L.tasks.map((x) => ({ ...x }));
+    try {
+      L.tasks.forEach((x) => { Object.keys(x).forEach((k) => delete x[k]); Object.assign(x, task); });
+      app.$('.tab[data-tab="learn"]').click(); app.$('.course[data-id="js"]').click(); app.$('.lesson-item[data-i="0"]').click();
+      await fn();
+      app.$('[data-act="quit"]').click();
+    } finally { L.tasks.forEach((x, i) => { Object.keys(x).forEach((k) => delete x[k]); Object.assign(x, saved[i]); }); }
+  }
+
+  test('edge: after a wrong MCQ answer the correct option has no right/ok class and the pick is wrong', async () => {
+    const app = await T.loadApp();
+    await withTask(app, { t: 'm', q: 'Pick', o: ['ZETA_RIGHT', 'alpha', 'beta', 'gamma'], a: 0 }, async () => {
+      const opts = app.$$('.opt'); assert.eq(opts.length, 4, 'four options');
+      opts.find((o) => o.textContent === 'beta').click(); app.$('#checkBtn').click();
+      // the task is re-rendered on check: re-query the buttons
+      const now = app.$$('.opt'), right = now.find((o) => o.textContent === 'ZETA_RIGHT'), pick = now.find((o) => o.textContent === 'beta');
+      assert(pick.classList.contains('wrong'), 'picked option must be wrong, has: ' + pick.className);
+      assert(!right.classList.contains('right') && !right.classList.contains('ok'), 'correct option revealed: ' + right.className);
+      assert.eq(app.$$('.opt.right, .opt.ok').length, 0, 'no option marked right/ok');
+      assert.eq(app.$$('.opt.wrong').length, 1, 'exactly one wrong');
+    });
+  });
+
+  test('edge: after a wrong typed answer (fill and write) the answer text appears nowhere in #lesson', async () => {
+    const app = await T.loadApp();
+    for (const task of [{ t: 'f', q: 'Fill', c: 'v = ___', a: ['QQSECRET7'] }, { t: 'w', q: 'Write', a: ['QQSECRET7()'] }]) {
+      await withTask(app, task, async () => {
+        const el = app.$('#ans'); el.value = 'nope'; el.dispatchEvent(new app.win.Event('input', { bubbles: true }));
+        app.$('#checkBtn').click();
+        assert(app.$('#sheet').classList.contains('bad'), task.t + ': wrong sheet');
+        const L = app.$('#lesson');
+        assert(!L.textContent.includes('QQSECRET7'), task.t + ': text reveals answer');
+        assert(!L.innerHTML.includes('QQSECRET7'), task.t + ': markup reveals answer');
+        assert(![...L.querySelectorAll('input,textarea')].some((i) => i.value.includes('QQSECRET7') || (i.placeholder || '').includes('QQSECRET7')), task.t + ': input reveals answer');
+      });
+    }
+  });
 })();
