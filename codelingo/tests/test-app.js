@@ -333,14 +333,14 @@
 
   // Music (R11): a fake AudioContext records what the app does with it.
   function fakeAudio(win) {
-    const log = { ctx: 0, osc: [], resumed: 0 };
+    const log = { ctx: 0, osc: [], resumed: 0, suspended: 0, refuseResume: false };
     const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} });
     const node = () => ({ connect() {}, disconnect() {} });
     class FakeCtx {
       constructor() { log.ctx++; this.state = 'running'; this.destination = node(); this.t0 = performance.now(); }
       get currentTime() { return (performance.now() - this.t0) / 1000; }
-      resume() { log.resumed++; return Promise.resolve(); }
-      suspend() { return Promise.resolve(); }
+      resume() { log.resumed++; if (!log.refuseResume) this.state = 'running'; return Promise.resolve(); }
+      suspend() { log.suspended++; this.state = 'suspended'; return Promise.resolve(); }
       createGain() { const g = node(); g.gain = param(); log.lastGain = g; return g; }
       createOscillator() { const o = node(); o.frequency = { ...param(), setValueAtTime: (f) => log.osc.push(f) }; o.start = () => {}; o.stop = () => {}; return o; }
     }
@@ -377,6 +377,75 @@
     assert(!M.playing, 'stops on the finish screen');
     setHidden(app, true); setHidden(app, false);
     assert(!M.playing, 'does not resume on the finish screen');
+  });
+
+  test('app: music suspends the context on stop and hidden; a refused resume restarts on the next tap', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: true } } });
+    const log = fakeAudio(app.win); const M = app.win.CLMusic;
+    await openLesson(app, 'js', 0);
+    assert(M.playing, 'playing');
+    setHidden(app, true);
+    assert(log.suspended === 1 && !M.playing, 'hidden: context suspended, not playing');
+    log.refuseResume = true; // iOS: no resume without a gesture
+    setHidden(app, false);
+    await T.sleep(30);
+    assert(!M.playing, 'playing reflects the suspended context');
+    app.$('#lessonBody').dispatchEvent(new app.win.Event('pointerdown', { bubbles: true }));
+    assert(!M.playing, 'still refused');
+    log.refuseResume = false;
+    setHidden(app, true); setHidden(app, false); await T.sleep(30);
+    assert(M.playing, 'normal resume on visible');
+    setHidden(app, true); log.refuseResume = true; setHidden(app, false); await T.sleep(30);
+    assert(!M.playing, 'refused again');
+    log.refuseResume = false;
+    app.$('#lessonBody').dispatchEvent(new app.win.Event('pointerdown', { bubbles: true }));
+    assert(M.playing, 'the next tap in the lesson restarts the music');
+    const n = log.suspended;
+    app.$('[data-act="quit"]').click();
+    assert(log.suspended === n + 1 && !M.playing, 'exit suspends the context');
+    assert.eq(log.ctx, 1, 'one AudioContext');
+  });
+
+  test('app: sound effects reuse the music AudioContext and play after the music stops', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: true, music: true } } });
+    const log = fakeAudio(app.win);
+    await openLesson(app, 'js', 0);
+    for (let i = 0; i < lessonCtx.tasks.length; i++) { answer(app, true); await cont(app); }
+    assert(app.$('.finish'), 'finish');
+    assert.eq(log.ctx, 1, 'one shared AudioContext');
+    assert.eq(app.win.CLMusic.context().state, 'running', 'the done jingle resumed the context after music.stop()');
+  });
+
+  test('app: typed tasks — symbol bar docked on the footer, textarea fills the height, hidden after Check', async () => {
+    const app = await T.loadApp();
+    const c = window.COURSES.find((x) => x.lessons[0].tasks.some((tk) => tk.t === 'w'));
+    assert(c, 'a course with a write task in lesson 1');
+    await openLesson(app, c.id, 0);
+    assert(app.$('#symdock').hidden, 'no symbol bar on a non-typed task') ;
+    for (let i = 0; i < lessonCtx.tasks.length && !app.$('textarea#ans'); i++) { answer(app, true); await cont(app); }
+    const ta = app.$('textarea#ans'); assert(ta, 'write task reached');
+    const dock = app.$('#symdock');
+    assert(!dock.hidden && dock.querySelector('.symbar'), 'symbol bar in the dock');
+    assert(!app.$('#lessonBody .symbar'), 'not inside the scrolling body');
+    const dr = dock.getBoundingClientRect(), fr = app.$('.lfoot').getBoundingClientRect();
+    assert(Math.abs(fr.top - dr.bottom) <= 1, `dock ${dr.bottom} vs footer ${fr.top}`);
+    const body = app.$('#lessonBody'); const br = body.getBoundingClientRect();
+    const pad = parseFloat(app.win.getComputedStyle(body).paddingBottom);
+    assert(Math.abs(br.bottom - pad - ta.getBoundingClientRect().bottom) <= 1, 'textarea fills to the bottom of the body');
+    assert(ta.getBoundingClientRect().height >= 140, 'min height kept');
+    answer(app, true);
+    assert(dock.hidden, 'symbol bar hidden after Check');
+  });
+
+  test('app: passed lesson row announces "Completed"; settings show only "CodeLingo · version"', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false }, prog: { js: { done: [0], ans: 1, ok: 1, xp: 0 } } } });
+    app.$('.course[data-id="js"]').click();
+    const sr = app.$('.lesson-item[data-i="0"] .st .sr-only');
+    assert(sr && sr.textContent === 'Completed', 'visually hidden completed text');
+    assert(!app.$('.lesson-item[data-i="1"] .sr-only'), 'only on passed lessons');
+    app.$('.tab[data-tab="settings"]').click();
+    assert(/^CodeLingo · \d+\.\d+\.\d+$/.test(app.$('.about').textContent.trim()), 'about: ' + app.$('.about').textContent);
+    ['en', 'ru', 'uk', 'cs'].forEach((l) => assert(window.I18N[l].offline === undefined && window.I18N[l].version === undefined, l + ': unused keys'));
   });
 
   test('app: music respects the setting and never throws without AudioContext', async () => {

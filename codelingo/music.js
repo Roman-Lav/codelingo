@@ -67,17 +67,33 @@
     } catch (e) { stop(); }
   }
 
-  // Must be called from a user gesture the first time (iOS unlocks audio on a tap).
-  function start() {
-    if (timer) return true;
+  // The one AudioContext of the app (sound effects reuse it). Null when audio is unavailable.
+  function context() {
+    if (ctx) return ctx;
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return false;
-      ctx = ctx || new AC();
-      if (ctx.state === 'suspended' && ctx.resume) {
+      ctx = AC ? new AC() : null;
+    } catch (e) { ctx = null; }
+    return ctx;
+  }
+
+  // Ask a suspended context to run again; settles (never rejects) when the browser answers.
+  function wake() {
+    try {
+      if (ctx && ctx.state !== 'running' && ctx.resume) {
         const p = ctx.resume();
-        if (p && p.catch) p.catch(() => {});
+        if (p && p.then) return p.then(() => {}, () => {});
       }
+    } catch (e) { /* refused */ }
+    return Promise.resolve();
+  }
+
+  // Must be called from a user gesture the first time (iOS unlocks audio on a tap).
+  function start() {
+    try {
+      if (!context()) return false;
+      wake();
+      if (timer) return true;
       master = ctx.createGain();
       master.gain.setValueAtTime(GAIN, ctx.currentTime);
       master.connect(ctx.destination);
@@ -92,6 +108,13 @@
     }
   }
 
+  // Start again after the app comes back to the foreground. Resolves to true if the audio
+  // context really runs; false means the browser (iOS) wants a new tap first.
+  function resume() {
+    if (!start()) return Promise.resolve(false);
+    return wake().then(() => isPlaying());
+  }
+
   function stop() {
     if (timer) clearInterval(timer);
     timer = 0;
@@ -100,12 +123,23 @@
       try { master.disconnect(); } catch (e) { /* already gone */ }
       master = null;
     }
+    // Let the audio hardware sleep (battery); start() wakes it up again.
+    try {
+      if (ctx && ctx.suspend && ctx.state === 'running') {
+        const p = ctx.suspend();
+        if (p && p.catch) p.catch(() => {});
+      }
+    } catch (e) { /* ignore */ }
   }
+
+  const isPlaying = () => timer !== 0 && !!ctx && ctx.state === 'running';
 
   window.CLMusic = {
     start,
     stop,
-    get playing() { return timer !== 0; },
+    resume,
+    context,
+    get playing() { return isPlaying(); },
     BPM, GAIN, MAX_HZ, BARS: LEAD.length / 8,
   };
 })();

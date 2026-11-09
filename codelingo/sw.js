@@ -1,5 +1,5 @@
 // Offline cache. Bump CACHE when any file changes so phones pick up the update.
-const CACHE = 'codelingo-1.0.6';
+const CACHE = 'codelingo-1.0.7';
 const FILES = [
   './', 'index.html', 'style.css', 'app.js', 'music.js', 'i18n.js', 'manifest.webmanifest',
   'courses/_core.js', 'courses/html.js', 'courses/css.js', 'courses/js.js',

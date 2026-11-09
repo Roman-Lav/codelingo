@@ -41,6 +41,7 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
 /* App shell (R8): the document never scrolls; only #screen does. The tab bar is the last
    row of a 100dvh flex column, so it stays at the bottom whatever the content length. */
 html, body { height: 100%; overflow: hidden; }
@@ -91,6 +92,12 @@ button.card:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: 
 .grid { flex: 1 0 auto; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(96px, 1fr); gap: var(--gap); }
 .course { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
 .cname { font-weight: 600; overflow-wrap: normal; word-break: keep-all; hyphens: none; }
+/* Tall cards from 360px: badge and name at title size so the card does not look hollow (R9 sizes only). */
+@media (min-width: 360px) {
+  .course { gap: 16px; }
+  .course .badge { font-size: var(--fs-title); padding: 8px 16px; }
+  .course .cname { font-size: var(--fs-title); }
+}
 .cdone { position: absolute; top: 8px; right: 8px; width: 16px; height: 16px; }
 .badge { display: inline-block; background: var(--accent); color: var(--accent-ink); font: 600 var(--fs-caption)/1 var(--sans); padding: 4px 8px; border: 2px solid var(--line); }
 .bar { height: 16px; border: 2px solid var(--line); background: var(--bg); overflow: hidden; }
@@ -101,7 +108,7 @@ button.card:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: 
 .course-head h1, .course-head .kpct { font-size: var(--fs-title); font-weight: 600; color: var(--ink); line-height: 1.4; }
 .course-head .kpct { margin-left: auto; flex: none; }
 .list { display: grid; grid-auto-rows: 1fr; gap: var(--gap); } /* every lesson row as tall as the tallest */
-.lesson-item { display: flex; align-items: center; justify-content: space-between; gap: var(--gap); min-height: 64px; text-align: left; }
+.lesson-item { position: relative; display: flex; align-items: center; justify-content: space-between; gap: var(--gap); min-height: 64px; text-align: left; }
 .lt { flex: 1; font-weight: 600; }
 .st { flex: none; display: grid; place-items: center; min-width: 24px; }
 .go { background: var(--accent); color: var(--accent-ink); border: 2px solid var(--line); font: 600 var(--fs-caption)/1 var(--sans); padding: 8px; }
@@ -180,7 +187,11 @@ pre.code.has-fill { cursor: text; } /* the whole block is the tap target of the 
 .fill { font: inherit; font-size: max(16px, var(--code-size)); color: var(--ink); background: var(--surface); border: 0; border-bottom: 3px solid var(--accent); border-radius: 0; padding: 1px 4px; outline: none; vertical-align: baseline; -webkit-appearance: none; }
 .write { display: block; width: 100%; min-height: 140px; font-size: max(16px, var(--code-size)); line-height: 1.5; color: var(--ink); background: var(--surface); border: 2px solid var(--line); border-radius: 0; padding: 16px; resize: vertical; outline: none; -webkit-appearance: none; tab-size: 2; }
 .write:focus { border-color: var(--accent); }
-.symbar { display: flex; gap: 8px; overflow-x: auto; padding: 16px 4px 4px 0; scrollbar-width: none; }
+.lbody.grow { display: flex; flex-direction: column; } /* write task: the textarea fills the free height */
+.lbody.grow .write { flex: 1 0 auto; }
+.symdock { flex: none; width: 100%; max-width: 560px; margin: 0 auto; padding: 8px 16px 0; } /* docked above the footer */
+.symdock[hidden] { display: none; }
+.symbar { display: flex; gap: 8px; overflow-x: auto; padding: 0 4px 4px 0; scrollbar-width: none; }
 .symbar::-webkit-scrollbar { display: none; }
 .sym { flex: none; min-width: 44px; height: 44px; padding: 0 8px; border: 2px solid var(--line); background: var(--surface); font-size: max(16px, var(--code-size)); font-weight: 600; box-shadow: var(--shadow); }
 .sym:active { transform: translate(3px, 3px); box-shadow: none; }

@@ -15,7 +15,6 @@ window.I18N = {
     reset: 'Reset progress',
     resetQ: 'Delete all progress? This cannot be undone.', resetDone: 'Progress reset',
     music: 'Music', completed: 'Completed', segAria: 'Lessons passed: {n} of {m}',
-    version: 'Version', offline: 'Works offline after the first launch.',
   },
   ru: {
     learn: 'Учиться', profile: 'Профиль', settings: 'Настройки',
@@ -33,7 +32,6 @@ window.I18N = {
     reset: 'Сбросить прогресс',
     resetQ: 'Удалить весь прогресс? Это нельзя отменить.', resetDone: 'Прогресс сброшен',
     music: 'Музыка', completed: 'Пройден', segAria: 'Пройдено уроков: {n} из {m}',
-    version: 'Версия', offline: 'Работает офлайн после первого запуска.',
   },
   uk: {
     learn: 'Навчання', profile: 'Профіль', settings: 'Налаштування',
@@ -51,7 +49,6 @@ window.I18N = {
     reset: 'Скинути прогрес',
     resetQ: 'Видалити весь прогрес? Це не можна скасувати.', resetDone: 'Прогрес скинуто',
     music: 'Музика', completed: 'Пройдено', segAria: 'Пройдено уроків: {n} з {m}',
-    version: 'Версія', offline: 'Працює офлайн після першого запуску.',
   },
   cs: {
     learn: 'Učit se', profile: 'Profil', settings: 'Nastavení',
@@ -69,6 +66,5 @@ window.I18N = {
     reset: 'Smazat postup',
     resetQ: 'Smazat veškerý postup? Nelze to vrátit.', resetDone: 'Postup smazán',
     music: 'Hudba', completed: 'Dokončeno', segAria: 'Dokončené lekce: {n} z {m}',
-    version: 'Verze', offline: 'Po prvním spuštění funguje offline.',
   },
 };

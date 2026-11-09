@@ -9,6 +9,7 @@ insets (notch / home indicator), walks through the app's screens and measures:
   covered    content hidden behind the fixed tab bar or lesson footer
   clipped    text cut off inside its box
   band       empty band under the course grid, or course cards of different size (R10)
+  void       typed task: symbol bar not docked on the footer, or empty band under the code field
   overlap    sibling elements drawn on top of each other
   tap        tap target smaller than 44x44
 Screenshots (viewport-sized, like a phone shows it) go to dist/layout/<device>/<screen>.png.
@@ -157,6 +158,19 @@ MEASURE_JS = r"""
   } else {
     const lb = document.querySelector('#lessonBody').getBoundingClientRect(), lf = document.querySelector('.lfoot').getBoundingClientRect();
     if (lb.bottom > lf.top + 0.5) out.push(['covered', `#lessonBody ends at ${Math.round(lb.bottom)}px, under the footer (top ${Math.round(lf.top)}px)`]);
+    // Typed tasks: the symbol bar is docked right on the footer, and a textarea fills the free height (no void).
+    const dock = document.querySelector('#symdock');
+    if (dock && !dock.hidden && visible(dock)) {
+      const dr = dock.getBoundingClientRect();
+      const sheet = document.querySelector('#sheet');
+      const below = sheet && !sheet.hidden ? sheet.getBoundingClientRect().top : lf.top;
+      if (Math.abs(below - dr.bottom) > 1) out.push(['void', `symbol bar ends ${Math.round(below - dr.bottom)}px above the footer`]);
+    }
+    const ta = document.querySelector('#lessonBody .write'), lbEl = document.querySelector('#lessonBody');
+    if (ta && lbEl.scrollHeight <= lbEl.clientHeight + 1) {
+      const gap = lb.bottom - (parseFloat(getComputedStyle(lbEl).paddingBottom) || 0) - ta.getBoundingClientRect().bottom;
+      if (gap > 1) out.push(['void', `empty band of ${Math.round(gap)}px under the code field`]);
+    }
   }
 
   // covered: scrolled to the end (window and the #screen scroller), the last content must be above the tab bar
@@ -189,7 +203,7 @@ MEASURE_JS = r"""
   for (const el of els) {
     if (!el.childNodes.length || ![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
     const cs = getComputedStyle(el);
-    if (/(auto|scroll)/.test(cs.overflowX) || el.closest('pre, .symbar, .bank, .slot')) continue;
+    if (/(auto|scroll)/.test(cs.overflowX) || el.closest('pre, .symbar, .bank, .slot, .sr-only')) continue; // .sr-only: screen-reader text, clipped on purpose
     if (el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0 && cs.display !== 'inline') out.push(['clipped', `${name(el)} text ${el.scrollWidth}px in ${el.clientWidth}px: "${el.textContent.trim().slice(0, 30)}"`]);
   }
 

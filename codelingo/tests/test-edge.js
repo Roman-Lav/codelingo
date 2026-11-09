@@ -198,7 +198,8 @@
     assert.eq(sz(null), '{}', 'null best container');
     assert.eq(sz(42), '{}', 'number best container');
     assert.eq(sz({ __proto__: { 0: 50 } }), '{}', 'inherited keys');
-    assert.eq(sz({ 2: 'abc', 3: '12px', 4: '  70  ', 5: '1e2' }), '{"4":70,"5":100}', 'text strings');
+    // Strings are accepted only in plain decimal form (/^\s*\d+(\.\d+)?\s*$/), so '1e2' is dropped like '0x10'.
+    assert.eq(sz({ 2: 'abc', 3: '12px', 4: '  70  ', 5: '1e2', 6: '87.5' }), '{"4":70,"6":88}', 'text strings');
     const proto = app.win.__codelingo.sanitize(JSON.parse('{"prog":{"js":{"done":[0],"best":{"__proto__":50,"constructor":5}}}}'));
     assert.eq(JSON.stringify(proto.prog.js.best), '{}', '__proto__ keys');
     // the app still shows the course screen with garbage best

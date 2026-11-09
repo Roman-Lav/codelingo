@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.6';
+  const VERSION = '1.0.7';
   const KEY = 'codelingo.v1';
   const LANGS = ['en', 'ru', 'uk', 'cs'];
   const LANG_NAMES = { en: 'English', ru: 'Русский', uk: 'Українська', cs: 'Čeština' };
@@ -31,7 +31,7 @@
     try { S = raw ? JSON.parse(raw) : null; } catch (e) { S = null; }
     S = sanitize(S);
   }
-  // Coerce stored/imported data into a safe shape so bad JSON can never break boot.
+  // Coerce stored data into a safe shape so bad JSON can never break boot.
   const isObj = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
   const num = (x) => (Number.isFinite(Number(x)) && Number(x) > 0 ? Math.floor(Number(x)) : 0);
   function sanitize(raw) {
@@ -55,8 +55,9 @@
         const best = {};
         if (isObj(p.best)) {
           Object.keys(p.best).forEach((k) => {
-            const i = Number(k); const v = Number(p.best[k]);
-            const okType = typeof p.best[k] === 'number' || (typeof p.best[k] === 'string' && p.best[k].trim() !== '');
+            const i = Number(k); const raw = p.best[k]; const v = Number(raw);
+            // Strings only in plain decimal form: Number() would also accept "0x10", "0b11", "0o7".
+            const okType = typeof raw === 'number' || (typeof raw === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(raw));
             if (/^\d+$/.test(k) && i < max && okType && Number.isFinite(v)) best[i] = Math.min(100, Math.max(0, Math.round(v)));
           });
         }
@@ -124,7 +125,7 @@
   const mascotSVG = (cls = '') => `<svg class="mascot ${cls}" viewBox="0 0 14 10" shape-rendering="crispEdges" aria-hidden="true">${gridRects(MASCOT, (c) => (c === 'E' ? 'me' : 'mb'))}</svg>`;
 
   /* ---------- Sound ---------- */
-  const music = window.CLMusic || { start() { return false; }, stop() {}, playing: false };
+  const music = window.CLMusic || { start() { return false; }, stop() {}, resume() { return Promise.resolve(false); }, playing: false };
   let ac = null;
   const SND = {
     ok: [[660, 0.08, 0], [990, 0.12, 0.08]],
@@ -134,8 +135,10 @@
   function beep(name) {
     if (!S.settings.sound) return;
     try {
-      ac = ac || new (window.AudioContext || window.webkitAudioContext)();
-      if (ac.state === 'suspended') ac.resume();
+      // One AudioContext for effects and music. resume() also runs after a pending suspend()
+      // from music.stop(), e.g. the "done" jingle right after the music stops.
+      ac = ac || (music.context && music.context()) || new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.resume) { const p = ac.resume(); if (p && p.catch) p.catch(() => {}); }
       const t0 = ac.currentTime + 0.01;
       SND[name].forEach(([f, d, st]) => {
         const o = ac.createOscillator(); const g = ac.createGain();
@@ -232,7 +235,7 @@
       <div class="list">` + c.lessons.map((L, i) => {
         const done = p.done.includes(i);
         const open = done || i === 0 || p.done.includes(i - 1);
-        const st = done ? pix('check', 'ic ok') : open ? `<span class="go">${esc(t('start'))}</span>` : pix('lock', 'ic');
+        const st = done ? pix('check', 'ic ok') + `<span class="sr-only">${esc(t('completed'))}</span>` : open ? `<span class="go">${esc(t('start'))}</span>` : pix('lock', 'ic');
         return `<button class="card lesson-item ${done ? 'done' : ''} ${open ? '' : 'locked'}" ${open ? `data-act="lesson" data-i="${i}"` : 'disabled'}>
           <span class="lt">${esc(tr(L.title))}</span>
           <span class="st">${st}</span>
@@ -275,7 +278,7 @@
       <div class="set"><span>${esc(t('language'))}</span><button class="btn ghost val" data-act="cycle" data-k="lang" lang="${S.settings.lang}" aria-label="${esc(t('language') + ': ' + langName)}">${esc(langName)}</button></div>
       ${TOGGLES.map((k) => `<div class="set"><span>${esc(t(TOGGLE_LABEL[k]))}</span>${toggle(k)}</div>`).join('')}
       <div class="stack"><button class="btn danger" data-act="reset">${esc(t('reset'))}</button></div>
-      <p class="about">CodeLingo · ${esc(t('version'))} ${VERSION}<br>${esc(t('offline'))}</p>`;
+      <p class="about">CodeLingo · ${VERSION}</p>`;
   }
 
   function renderTabs() {
@@ -346,20 +349,26 @@
     } else if (task.t === 'f') {
       const [a, b] = task.c.split('___');
       const w = Math.max(3, Math.max(...task.a.map((x) => x.length)) + 1);
-      h += `<pre class="code has-fill" data-act="fillfocus"><code>${esc(a)}<input id="ans" class="fill" style="width:${w + 1}ch" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">${esc(b)}</code></pre>` + symbar();
+      h += `<pre class="code has-fill" data-act="fillfocus"><code>${esc(a)}<input id="ans" class="fill" style="width:${w + 1}ch" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">${esc(b)}</code></pre>`;
     } else if (task.t === 'w') {
       if (task.c) h += codeBlock(task.c);
-      h += `<textarea id="ans" class="write" rows="5" placeholder="${esc(t('typeCode'))}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>` + symbar();
+      h += `<textarea id="ans" class="write" rows="5" placeholder="${esc(t('typeCode'))}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>`;
     } else if (task.t === 'o') {
       h += `<div class="slot">${cur.picked.map((k, n) => `<button class="tok mono" data-act="untok" data-n="${n}">${esc(cur.bank[k].x)}</button>`).join('')}</div>
         <p class="small">${esc(t('tapTokens'))}</p>
         <div class="bank">${cur.bank.map((b, k) => `<button class="tok mono ${cur.hl === k ? 'hl' : ''}" data-act="tok" data-k="${k}" ${cur.picked.includes(k) || cur.checked ? 'disabled' : ''}>${esc(b.x)}</button>`).join('')}</div>`;
     }
     const body = $('#lessonBody');
-    if (fresh || (task.t !== 'f' && task.t !== 'w')) {
+    const typed = task.t === 'f' || task.t === 'w';
+    if (fresh || !typed) {
       body.innerHTML = h;
       if (fresh) body.scrollTop = 0;
+      body.classList.toggle('grow', task.t === 'w'); // the textarea takes the free height
     }
+    // The symbol bar is docked right above the footer (and so above the iOS keyboard).
+    const dock = $('#symdock');
+    if (fresh) dock.innerHTML = typed ? symbar() : '';
+    dock.hidden = !typed || cur.checked;
     $('#bar').firstElementChild.style.width = Math.round((100 * LS.done) / LS.total) + '%';
     if (fresh) {
       const sheet = $('#sheet'); sheet.hidden = true; sheet.className = 'sheet';
@@ -458,6 +467,8 @@
     save();
     $('#bar').firstElementChild.style.width = '100%';
     $('#sheet').hidden = true;
+    $('#symdock').hidden = true;
+    $('#lessonBody').classList.remove('grow');
     $('#lessonBody').innerHTML = `<div class="finish">${mascotSVG('big jump')}
       <h2>${esc(t('lessonDone'))}</h2></div>`;
     const btn = $('#checkBtn'); btn.className = 'btn'; btn.textContent = t('next'); btn.disabled = false;
@@ -631,8 +642,14 @@
 
   // R11: no music while the app is in the background; resume only inside an open lesson.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') music.stop();
-    else if (LS && !LS.finished && S.settings.music) music.start();
+    if (document.visibilityState === 'hidden') { music.stop(); return; }
+    const inLesson = () => LS && !LS.finished && S.settings.music && document.visibilityState === 'visible';
+    if (!inLesson()) return;
+    music.resume().then((running) => {
+      // iOS may refuse to resume audio without a gesture: the next tap in the lesson restarts it.
+      if (running || !inLesson()) return;
+      $('#lesson').addEventListener('pointerdown', () => { if (inLesson()) music.start(); }, { once: true });
+    });
   });
 
   if (window.visualViewport) {
