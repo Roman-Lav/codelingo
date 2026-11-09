@@ -15,6 +15,7 @@
   --mascot: #D97757;
   --eye: #24170B;
   --code-bg: #EFE9E1;
+  --scrim: rgba(42, 42, 42, .5); /* modal backdrop */
   --code-size: 15px; /* fixed (R9); inputs use max(16px, ...) */
   --shadow: 3px 3px 0 var(--line); /* the only shadow of interactive cards and buttons (R10) */
   --gap: 16px; /* screen padding, card gap, card padding (R10) */
@@ -30,30 +31,38 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #17110B; --surface: #24170B; --ink: #F7F4EF; --muted: #B5A99C; --line: #F7F4EF;
-    --code-bg: #2E2015; --ok-bg: #173521; --bad-bg: #3F1A19; --eye: #17110B; --ok: #3DBE63; --bad: #F0605A; --mid: #F2C230; --on-accent: #FFFFFF;
+    --code-bg: #2E2015; --ok-bg: #173521; --bad-bg: #3F1A19; --eye: #17110B; --ok: #3DBE63; --bad: #F0605A; --mid: #F2C230; --on-accent: #FFFFFF; --scrim: rgba(0, 0, 0, .6);
       color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #17110B; --surface: #24170B; --ink: #F7F4EF; --muted: #B5A99C; --line: #F7F4EF;
-  --code-bg: #2E2015; --ok-bg: #173521; --bad-bg: #3F1A19; --eye: #17110B; --ok: #3DBE63; --bad: #F0605A; --mid: #F2C230; --on-accent: #FFFFFF;
+  --code-bg: #2E2015; --ok-bg: #173521; --bad-bg: #3F1A19; --eye: #17110B; --ok: #3DBE63; --bad: #F0605A; --mid: #F2C230; --on-accent: #FFFFFF; --scrim: rgba(0, 0, 0, .6);
     color-scheme: dark;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
-/* App shell (R8): the document never scrolls; only #screen does. The tab bar is the last
-   row of a 100dvh flex column, so it stays at the bottom whatever the content length. */
+/* App shell (R8): the document never scrolls; only #screen does. The body is pinned to the screen
+   edges (fixed, inset 0) and the tab bar is the last row of its flex column, so it stays at the
+   bottom whatever the content length. No viewport-height units: in iOS standalone with
+   viewport-fit=cover they are computed without the status bar at launch and leave a band. */
 html, body { height: 100%; overflow: hidden; }
+/* R12: no tap highlight and no long-press callout anywhere in the UI. */
+html { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
 body {
-  display: flex; flex-direction: column; height: 100vh; height: 100dvh;
+  position: fixed; inset: 0; display: flex; flex-direction: column;
   background: var(--bg); color: var(--ink);
   font: 400 var(--fs-body)/1.4 var(--sans);
-  -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
   overscroll-behavior: none;
 }
 h1, h2, h3, b, strong { font-weight: 600; }
-button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; touch-action: manipulation; }
+/* R12: UI chrome is not selectable (no selection loupe); code blocks stay selectable. */
+button, .card, .course, .lesson-item, .opt, .tok, .sym, .symbar, .tabbar, .tab, .segbar, .week, .bar,
+header.top, .course-head, .ltop, h1, h2, h3, .badge, .modal { -webkit-user-select: none; user-select: none; }
+pre.code, pre.code * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 /* Monospace only inside code (R9). */
 code, pre, .mono, .tok, .write, .fill, .opt.mono, .sym { font-family: var(--mono); }
 svg.pix rect { fill: currentColor; }
@@ -164,7 +173,8 @@ button.card:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: 
 #checkBtn { text-transform: uppercase; } /* the only all-caps text in the app (R9) */
 
 /* ---------- Lesson ---------- */
-.lesson { position: fixed; left: 0; right: 0; top: 0; height: 100vh; height: 100dvh; z-index: 20; display: flex; flex-direction: column; background: var(--bg); padding-top: env(safe-area-inset-top); }
+/* Pinned to the edges like the shell (R8); JS sets a height only while the keyboard is up. */
+.lesson { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; background: var(--bg); padding-top: env(safe-area-inset-top); }
 .lesson[hidden] { display: none; }
 .ltop { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 16px; max-width: 560px; width: 100%; margin: 0 auto; }
 .ltop .bar { flex: 1; height: 14px; }
@@ -236,6 +246,16 @@ pre.code.has-fill { cursor: text; } /* the whole block is the tap target of the 
 .bubble[hidden], .toast[hidden] { display: none; }
 /* --tabbar-h is measured from #tabbar in JS when the toast is shown. */
 .toast { position: fixed; z-index: 60; left: max(16px, env(safe-area-inset-left)); right: max(16px, env(safe-area-inset-right)); bottom: calc(var(--tabbar-h, calc(64px + env(safe-area-inset-bottom))) + 16px); max-width: 528px; margin: 0 auto; background: var(--ink); color: var(--bg); padding: 16px; font-weight: 600; text-align: center; }
+
+/* ---------- Modal (R12): in-app confirmation ---------- */
+.modal { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
+  padding: max(var(--gap), env(safe-area-inset-top)) max(var(--gap), env(safe-area-inset-right)) max(var(--gap), env(safe-area-inset-bottom)) max(var(--gap), env(safe-area-inset-left)); }
+.mback { position: absolute; inset: 0; background: var(--scrim); }
+/* Static container: border, no shadow; the buttons carry the one shadow (R10). */
+.mbox { position: relative; width: 100%; max-width: 400px; background: var(--surface); color: var(--ink); border: 2px solid var(--line); padding: var(--gap); }
+.mtitle { font-size: var(--fs-body); font-weight: 600; line-height: 1.4; margin-bottom: var(--section); overflow-wrap: anywhere; }
+.mbtns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); }
+.mbtns .btn { padding: 0 8px; overflow-wrap: anywhere; }
 
 /* ---------- Tablet / landscape: wider column, 3 course columns; the lesson stays 560px ---------- */
 @media (min-width: 700px) {

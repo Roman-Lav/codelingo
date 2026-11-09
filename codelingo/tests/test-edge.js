@@ -90,11 +90,10 @@
   test('edge/music: quitting before the first answer stops it (no confirm shown)', async () => {
     const app = await T.loadApp({ state: MUSIC });
     const log = fakeAudio(app.win);
-    let asked = 0; app.win.confirm = () => { asked++; return true; };
     open(app, 'js', 0);
     assert(app.win.CLMusic.playing && log.intervals.size === 1, 'playing in lesson');
     app.$('[data-act="quit"]').click();
-    assert.eq(asked, 0, 'no confirm before first answer');
+    assert(!app.$('.modal'), 'no confirm modal before first answer');
     assert(app.$('#lesson').hidden, 'closed');
     assert(!app.win.CLMusic.playing && log.intervals.size === 0, 'music stopped');
   });
@@ -454,6 +453,7 @@
       app.$('.tab[data-tab="learn"]').click(); app.$('.course[data-id="js"]').click(); app.$('.lesson-item[data-i="0"]').click();
       await fn();
       app.$('[data-act="quit"]').click();
+      const ok = app.$('.modal [data-m="ok"]'); if (ok) ok.click(); // answered: confirm in the in-app modal
     } finally { L.tasks.forEach((x, i) => { Object.keys(x).forEach((k) => delete x[k]); Object.assign(x, saved[i]); }); }
   }
 

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.11';
+  const VERSION = '1.0.12';
   const KEY = 'codelingo.v1';
   const LANGS = ['en', 'ru', 'uk', 'cs'];
   const LANG_NAMES = { en: 'English', ru: 'Русский', uk: 'Українська', cs: 'Čeština' };
@@ -499,8 +499,9 @@
     beep('done');
   }
 
-  function exitLesson(force) {
-    if (!force && LS && !LS.finished && LS.ans > 0 && !window.confirm(t('quitQ'))) return;
+  function exitLesson(force, opener) {
+    // R12: an in-app modal instead of window.confirm. Music keeps playing while it is open.
+    if (!force && LS && !LS.finished && LS.ans > 0) { modal('quitQ', 'quit', () => exitLesson(true), { opener }); return; }
     LS = null;
     music.stop(); clearTapRetry();
     hideBubble();
@@ -571,12 +572,78 @@
     el.focus();
   }
 
+  // R8: the lesson is pinned to the screen edges (position: fixed; inset: 0). Only while a native
+  // input in the lesson has focus (the keyboard is up) it follows the visual viewport; otherwise
+  // the inline height is cleared so the lesson never keeps a stale height (a band under it).
   function fitViewport() {
     const vv = window.visualViewport; const el = $('#lesson');
-    if (!vv || !el || el.hidden) return;
-    el.style.height = vv.height + 'px';
-    el.style.transform = `translateY(${vv.offsetTop}px)`;
+    if (!el) return;
+    const a = document.activeElement;
+    const typing = !!vv && !el.hidden && !!a && el.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
+    el.style.height = typing ? vv.height + 'px' : '';
+    el.style.transform = typing && vv.offsetTop ? `translateY(${vv.offsetTop}px)` : '';
   }
+
+  /* ---------- Modal (R12): app-styled confirmation instead of window.confirm ---------- */
+  // At most one at a time. Focus goes to Cancel, Tab cycles inside, Esc / backdrop = cancel,
+  // focus returns to the opener. The action fires once; a ghost tap right after closing is swallowed.
+  let modalEl = null;
+  let ghostUntil = 0;
+  function modal(titleKey, okKey, onOk, opts = {}) {
+    if (modalEl) return;
+    const opener = opts.opener || (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    const openerAct = opener && opener.dataset ? opener.dataset.act : '';
+    const wrap = document.createElement('div');
+    wrap.className = 'modal';
+    wrap.innerHTML = `<div class="mback" data-m="cancel"></div>
+      <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="mtitle">
+        <h2 id="mtitle" class="mtitle">${esc(t(titleKey))}</h2>
+        <div class="mbtns">
+          <button type="button" class="btn ghost" data-m="cancel">${esc(t('cancel'))}</button>
+          <button type="button" class="btn${opts.danger ? ' danger' : ''}" data-m="ok">${esc(t(okKey))}</button>
+        </div>
+      </div>`;
+    const behind = ['#screen', '#tabbar', '#lesson'].map((sel) => $(sel)).filter(Boolean);
+    let closed = false;
+    const close = (ok) => {
+      if (closed) return; // a double tap on the action can't fire it twice
+      closed = true;
+      document.removeEventListener('keydown', onKey, true);
+      behind.forEach((el) => { el.inert = false; });
+      wrap.remove(); modalEl = null;
+      ghostUntil = Date.now() + 400;
+      if (ok) onOk();
+      const shown = (el) => el.isConnected && el.getClientRects().length > 0;
+      const back = opener && shown(opener) ? opener
+        : openerAct ? $$(`[data-act="${openerAct}"]`).find(shown) : null;
+      if (back) back.focus({ preventScroll: true });
+    };
+    const btns = () => $$('button', wrap);
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); return; }
+      if (e.key !== 'Tab') return;
+      const b = btns(); const i = b.indexOf(document.activeElement);
+      e.preventDefault(); e.stopPropagation();
+      if (i < 0) b[0].focus();
+      else if (e.shiftKey) b[(i + b.length - 1) % b.length].focus();
+      else b[(i + 1) % b.length].focus();
+    }
+    wrap.addEventListener('click', (e) => {
+      e.stopPropagation(); // never reaches the app's [data-act] handler
+      const m = e.target.closest('[data-m]');
+      if (m) close(m.dataset.m === 'ok');
+    });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(wrap);
+    modalEl = wrap;
+    behind.forEach((el) => { el.inert = true; });
+    btns()[0].focus({ preventScroll: true });
+  }
+  // A real tap (detail > 0) right after a modal closed is the second half of a double tap: swallow it,
+  // so it can't hit whatever was under the action button (e.g. a lesson row after quitting).
+  document.addEventListener('click', (e) => {
+    if (!modalEl && e.detail > 0 && Date.now() < ghostUntil) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
 
   function toast(msg) {
     const el = $('#toast'); el.textContent = msg;
@@ -602,7 +669,7 @@
       case 'fillfocus': { const inp = $('#ans', el); if (inp && !inp.readOnly && e.target !== inp) inp.focus(); break; }
       case 'lesson': startLesson(courseId, Number(el.dataset.i)); break;
       case 'mascot': if ($('#bubble').hidden) hint(); else { hideBubble(); if (LS) hint(); } break;
-      case 'quit': exitLesson(false); break;
+      case 'quit': exitLesson(false, el); break;
       case 'check': check(); break;
       case 'opt': if (!LS.cur.checked) { LS.cur.sel = Number(el.dataset.i); renderTask(false); } break;
       case 'tok': if (!LS.cur.checked) { const k = Number(el.dataset.k); LS.cur.picked.push(k); if (LS.cur.hl === k) LS.cur.hl = -1; renderTask(false); } break;
@@ -617,7 +684,7 @@
         break;
       }
       case 'reset':
-        if (window.confirm(t('resetQ'))) { const keep = S.settings; S = defaults(); S.settings = keep; save(); render(); toast(t('resetDone')); }
+        modal('resetQ', 'resetAct', () => { const keep = S.settings; S = defaults(); S.settings = keep; save(); render(); toast(t('resetDone')); }, { danger: true, opener: el });
         break;
       default: break;
     }
@@ -676,6 +743,9 @@
     });
   });
 
+  // The lesson follows the visual viewport only while its input is focused (keyboard up).
+  document.addEventListener('focusin', () => setTimeout(fitViewport, 0));
+  document.addEventListener('focusout', () => setTimeout(fitViewport, 0));
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', fitViewport);
     window.visualViewport.addEventListener('scroll', fitViewport);

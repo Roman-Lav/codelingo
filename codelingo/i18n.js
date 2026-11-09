@@ -1,5 +1,6 @@
 window.I18N = {
   en: {
+    cancel: 'Cancel', quit: 'Quit', resetAct: 'Reset',
     learn: 'Learn', profile: 'Profile', settings: 'Settings',
     start: 'Start', back: 'Back',
     check: 'Check', next: 'Continue', correct: 'Correct!', wrong: 'Not quite',
@@ -18,6 +19,7 @@ window.I18N = {
     statLessons: 'Lessons done: {n}\u00a0of\u00a0{m}', pct: '{n}%', knowAria: 'Knowledge: {n}%', statAcc: 'Correct answers {p}% ({ok}\u00a0of\u00a0{ans})', statAccNone: 'Correct answers\u00a0—',
   },
   ru: {
+    cancel: 'Отмена', quit: 'Выйти', resetAct: 'Сбросить',
     learn: 'Учиться', profile: 'Профиль', settings: 'Настройки',
     start: 'Начать', back: 'Назад',
     check: 'Проверить', next: 'Дальше', correct: 'Верно!', wrong: 'Не совсем',
@@ -36,6 +38,7 @@ window.I18N = {
     statLessons: 'Пройдено уроков: {n}\u00a0из\u00a0{m}', pct: '{n}%', knowAria: 'Знания: {n}%', statAcc: 'Верных ответов {p}% ({ok}\u00a0из\u00a0{ans})', statAccNone: 'Верных ответов\u00a0—',
   },
   uk: {
+    cancel: 'Скасувати', quit: 'Вийти', resetAct: 'Скинути',
     learn: 'Навчання', profile: 'Профіль', settings: 'Налаштування',
     start: 'Почати', back: 'Назад',
     check: 'Перевірити', next: 'Далі', correct: 'Правильно!', wrong: 'Не зовсім',
@@ -54,6 +57,7 @@ window.I18N = {
     statLessons: 'Пройдено уроків: {n}\u00a0з\u00a0{m}', pct: '{n}%', knowAria: 'Знання: {n}%', statAcc: 'Правильних відповідей {p}% ({ok}\u00a0з\u00a0{ans})', statAccNone: 'Правильних відповідей\u00a0—',
   },
   cs: {
+    cancel: 'Zrušit', quit: 'Ukončit', resetAct: 'Smazat',
     learn: 'Učit se', profile: 'Profil', settings: 'Nastavení',
     start: 'Začít', back: 'Zpět',
     check: 'Zkontrolovat', next: 'Pokračovat', correct: 'Správně!', wrong: 'Ne tak docela',

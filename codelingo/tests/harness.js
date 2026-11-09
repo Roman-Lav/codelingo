@@ -24,13 +24,14 @@ window.T = (() => {
     for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) throw new AssertError('timeout waiting for ' + what); await sleep(20); }
   };
 
+  const afterEach = [];
   async function run() {
     const filter = new URLSearchParams(location.search).get('grep');
     let pass = 0, fail = 0;
     const failures = [];
     for (const { name, fn } of tests) {
       if (filter && !name.includes(filter)) continue;
-      try { await fn(); pass++; log('ok', `✓ ${name}`); }
+      try { await fn(); for (const h of afterEach) await h(name); pass++; log('ok', `✓ ${name}`); }
       catch (e) { fail++; failures.push(name); log('bad', `✗ ${name}\n    ${e && e.stack && !(e instanceof AssertError) ? e.stack : e.message}`); }
     }
     const status = fail ? 'FAIL' : 'PASS';
@@ -38,5 +39,5 @@ window.T = (() => {
     const r = document.getElementById('result');
     r.dataset.status = status; r.textContent = `${status} ${pass}/${pass + fail}`;
   }
-  return { test: (name, fn) => tests.push({ name, fn }), assert, collector, sleep, waitFor, run };
+  return { test: (name, fn) => tests.push({ name, fn }), afterEach: (h) => afterEach.push(h), assert, collector, sleep, waitFor, run };
 })();

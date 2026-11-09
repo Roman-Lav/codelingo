@@ -42,6 +42,22 @@
     }
   });
 
+  test('files: style.css has no 100vh or dvh (R8: fixed inset shell)', async () => {
+    const css = (await fetchText('style.css')).replace(/\/\*[\s\S]*?\*\//g, '');
+    const k = collector();
+    css.split('\n').forEach((line, i) => { if (/100vh|dvh/.test(line)) k.check(false, `style.css:${i + 1}: ${line.trim()}`); });
+    k.done();
+  });
+
+  test('files: no native dialogs, file pickers or share sheet in app code (R12)', async () => {
+    const k = collector();
+    for (const f of ['app.js', 'music.js', 'sw.js', 'index.html']) {
+      const src = await fetchText(f);
+      [/\b(window\.)?(confirm|alert|prompt)\s*\(/, /navigator\.(share|canShare)/, /type=["']?file/, /show(Open|Save)FilePicker/].forEach((re) => k.check(!re.test(src), `${f}: matches ${re}`));
+    }
+    k.done();
+  });
+
   test('files: app VERSION and sw CACHE are bumped together', async () => {
     const app = await fetchText('app.js');
     const { src } = await swFiles();

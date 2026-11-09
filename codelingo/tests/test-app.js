@@ -3,17 +3,32 @@
   const { test, assert, waitFor } = T;
   const KEY = 'codelingo.v1';
   let frame = null;
+  // R12: the app must never use native device dialogs. Every UI test runs with these stubs; a call
+  // is recorded (a throw inside an event listener would not reach the test) and fails the test.
+  const nativeCalls = [];
+  T.afterEach((name) => {
+    if (!nativeCalls.length) return;
+    const got = nativeCalls.splice(0).join(', ');
+    throw new Error(`${name}: native dialog used (${got})`);
+  });
+  const stubNative = (win) => {
+    ['confirm', 'alert', 'prompt'].forEach((k) => {
+      win[k] = (msg) => { nativeCalls.push(`${k}(${JSON.stringify(String(msg))})`); throw new Error(`window.${k} is not allowed (R12)`); };
+    });
+  };
 
   // Fresh app instance. `state` optionally pre-seeds localStorage; `lang` forces UI language.
-  T.loadApp = async ({ state, lang = 'en' } = {}) => {
+  T.loadApp = async ({ state, lang = 'en', size } = {}) => {
+    nativeCalls.length = 0; // leftovers of a test that already failed
     localStorage.removeItem(KEY);
     localStorage.setItem(KEY, JSON.stringify(state || { settings: { lang, sound: false, music: false } }));
     if (frame) frame.remove();
     frame = document.createElement('iframe');
+    if (size) { frame.style.width = size[0] + 'px'; frame.style.height = size[1] + 'px'; } // launch at this size
     document.body.appendChild(frame);
     await new Promise((res) => { frame.onload = res; frame.src = '../index.html?t=' + Math.random(); });
     const win = frame.contentWindow; const doc = frame.contentDocument;
-    win.confirm = () => (win.__confirmAnswer ?? true);
+    stubNative(win);
     await waitFor(() => win.__codelingo, 3000, 'app boot');
     return { win, doc, $: (s) => doc.querySelector(s), $$: (s) => [...doc.querySelectorAll(s)], stored: () => JSON.parse(localStorage.getItem(KEY)) };
   };
@@ -117,11 +132,12 @@
     const app = await T.loadApp();
     await openLesson(app, 'py', 0);
     answer(app, true); await cont(app);
-    app.win.__confirmAnswer = false;
     app.$('[data-act="quit"]').click();
-    assert(!app.$('#lesson').hidden, 'cancel keeps lesson open');
-    app.win.__confirmAnswer = true;
+    assert(app.$('.modal [role="dialog"]'), 'in-app modal shown');
+    app.$('.modal [data-m="cancel"].btn').click();
+    assert(!app.$('#lesson').hidden && !app.$('.modal'), 'cancel keeps lesson open');
     app.$('[data-act="quit"]').click();
+    app.$('.modal [data-m="ok"]').click();
     assert(app.$('#lesson').hidden, 'confirm closes lesson');
     assert.eq((app.stored().prog.py || { done: [] }).done.length, 0, 'lesson not done');
   });
