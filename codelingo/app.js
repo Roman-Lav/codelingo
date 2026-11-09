@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.10';
+  const VERSION = '1.0.11';
   const KEY = 'codelingo.v1';
   const LANGS = ['en', 'ru', 'uk', 'cs'];
   const LANG_NAMES = { en: 'English', ru: 'Русский', uk: 'Українська', cs: 'Čeština' };
@@ -231,7 +231,7 @@
     const c = COURSES.find((x) => x.id === id);
     const p = prog(id);
     // R9: the course percent is the only number in the UI; it looks exactly like the course name.
-    return header('', true) + `<div class="course-head"><span class="badge">${esc(c.tag)}</span><h1>${esc(c.name)}</h1><span class="kpct">${knowledge(c)}%</span></div>
+    return header('', true) + `<div class="course-head"><span class="badge">${esc(c.tag)}</span><h1>${esc(c.name)}</h1>${kpct(c)}</div>
       <div class="list">` + c.lessons.map((L, i) => {
         const done = p.done.includes(i);
         const open = done || i === 0 || p.done.includes(i - 1);
@@ -251,6 +251,10 @@
     return acc >= 90 ? 'ok' : acc >= 60 ? 'mid' : 'bad';
   }
 
+  // Course percent k%: the locale's percent format (cs "45 %"), announced as "Knowledge: 45%".
+  // role="img" so screen readers use the label instead of the bare number.
+  const kpct = (c) => { const n = knowledge(c); return `<span class="kpct" role="img" aria-label="${esc(fmt(t('knowAria'), { n }))}">${esc(fmt(t('pct'), { n }))}</span>`; };
+
   // Profile stats of one course (screen 4): lessons passed and the share of correct answers.
   function courseStats(c) {
     const p = prog(c.id);
@@ -267,13 +271,13 @@
       COURSES.map((c) => {
         const p = prog(c.id);
         const st = courseStats(c);
-        const aria = fmt(t('segAria'), { n: st.done, m: st.total });
         const lessons = fmt(t('statLessons'), { n: st.done, m: st.total });
         const acc = st.pct === null ? t('statAccNone') : fmt(t('statAcc'), { p: st.pct, ok: st.ok, ans: st.ans });
-        // R9: the name and the percent look exactly like the course-screen header (.course-head h1/.kpct).
-        return `<section class="krow" data-id="${c.id}">
-          <div class="course-head"><h2>${esc(c.name)}</h2><span class="kpct">${knowledge(c)}%</span></div>
-          <div class="segbar" role="img" aria-label="${esc(aria)}">${c.lessons.map((_, i) => `<i class="${segClass(p, i)}"></i>`).join('')}</div>
+        // R9: badge, name and percent look exactly like the course-screen header (.course-head).
+        // The bar is decorative for screen readers: the caption says the same.
+        return `<section class="krow" data-id="${c.id}" aria-labelledby="kh-${c.id}">
+          <div class="course-head"><span class="badge">${esc(c.tag)}</span><h2 id="kh-${c.id}">${esc(c.name)}</h2>${kpct(c)}</div>
+          <div class="segbar" aria-hidden="true">${c.lessons.map((_, i) => `<i class="${segClass(p, i)}"></i>`).join('')}</div>
           <p class="kstat"><span class="kles">${esc(lessons)}</span><span class="kacc">${esc(acc)}</span></p>
         </section>`;
       }).join('') + '</div>';
@@ -441,6 +445,7 @@
       LS.queue.push(LS.queue.shift());
     }
     const el = $('#ans'); if (el) { el.readOnly = true; el.blur(); }
+    hideBubble(); // a hint bubble may hold the start of the answer: never leave it next to the result
     renderTask(false);
     feedback(ok);
   }
@@ -518,7 +523,7 @@
     clearTimeout(bubbleTimer);
     bubbleTimer = setTimeout(hideBubble, 6000);
   }
-  function hideBubble() { const b = $('#bubble'); if (b) b.hidden = true; clearTimeout(bubbleTimer); }
+  function hideBubble() { const b = $('#bubble'); if (b) { b.hidden = true; b.textContent = ''; } clearTimeout(bubbleTimer); }
 
   function hint() {
     if (!LS || LS.finished || !LS.cur || LS.cur.checked) return bubble(t(LS ? 'hintNone' : 'hello'));

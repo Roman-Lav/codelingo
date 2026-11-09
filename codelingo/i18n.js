@@ -14,8 +14,8 @@ window.I18N = {
     sound: 'Sound effects', mascotHints: 'Mascot hints', animations: 'Animations',
     reset: 'Reset progress',
     resetQ: 'Delete all progress? This cannot be undone.', resetDone: 'Progress reset',
-    music: 'Music', completed: 'Completed', segAria: 'Lessons passed: {n} of {m}',
-    statLessons: 'Lessons {n}\u00a0of\u00a0{m}', statAcc: 'Correct answers {p}% ({ok}\u00a0of\u00a0{ans})', statAccNone: 'Correct answers\u00a0—',
+    music: 'Music', completed: 'Completed',
+    statLessons: 'Lessons done: {n}\u00a0of\u00a0{m}', pct: '{n}%', knowAria: 'Knowledge: {n}%', statAcc: 'Correct answers {p}% ({ok}\u00a0of\u00a0{ans})', statAccNone: 'Correct answers\u00a0—',
   },
   ru: {
     learn: 'Учиться', profile: 'Профиль', settings: 'Настройки',
@@ -32,8 +32,8 @@ window.I18N = {
     sound: 'Звуки', mascotHints: 'Подсказки маскота', animations: 'Анимации',
     reset: 'Сбросить прогресс',
     resetQ: 'Удалить весь прогресс? Это нельзя отменить.', resetDone: 'Прогресс сброшен',
-    music: 'Музыка', completed: 'Пройден', segAria: 'Пройдено уроков: {n} из {m}',
-    statLessons: 'Уроки {n}\u00a0из\u00a0{m}', statAcc: 'Верных ответов {p}% ({ok}\u00a0из\u00a0{ans})', statAccNone: 'Верных ответов\u00a0—',
+    music: 'Музыка', completed: 'Пройден',
+    statLessons: 'Пройдено уроков: {n}\u00a0из\u00a0{m}', pct: '{n}%', knowAria: 'Знания: {n}%', statAcc: 'Верных ответов {p}% ({ok}\u00a0из\u00a0{ans})', statAccNone: 'Верных ответов\u00a0—',
   },
   uk: {
     learn: 'Навчання', profile: 'Профіль', settings: 'Налаштування',
@@ -50,8 +50,8 @@ window.I18N = {
     sound: 'Звуки', mascotHints: 'Підказки маскота', animations: 'Анімації',
     reset: 'Скинути прогрес',
     resetQ: 'Видалити весь прогрес? Це не можна скасувати.', resetDone: 'Прогрес скинуто',
-    music: 'Музика', completed: 'Пройдено', segAria: 'Пройдено уроків: {n} з {m}',
-    statLessons: 'Уроки {n}\u00a0з\u00a0{m}', statAcc: 'Правильних відповідей {p}% ({ok}\u00a0з\u00a0{ans})', statAccNone: 'Правильних відповідей\u00a0—',
+    music: 'Музика', completed: 'Пройдено',
+    statLessons: 'Пройдено уроків: {n}\u00a0з\u00a0{m}', pct: '{n}%', knowAria: 'Знання: {n}%', statAcc: 'Правильних відповідей {p}% ({ok}\u00a0з\u00a0{ans})', statAccNone: 'Правильних відповідей\u00a0—',
   },
   cs: {
     learn: 'Učit se', profile: 'Profil', settings: 'Nastavení',
@@ -68,7 +68,7 @@ window.I18N = {
     sound: 'Zvuky', mascotHints: 'Nápovědy maskota', animations: 'Animace',
     reset: 'Smazat postup',
     resetQ: 'Smazat veškerý postup? Nelze to vrátit.', resetDone: 'Postup smazán',
-    music: 'Hudba', completed: 'Dokončeno', segAria: 'Dokončené lekce: {n} z {m}',
-    statLessons: 'Lekce {n}\u00a0z\u00a0{m}', statAcc: 'Správné odpovědi {p}\u00a0% ({ok}\u00a0z\u00a0{ans})', statAccNone: 'Správné odpovědi\u00a0—',
+    music: 'Hudba', completed: 'Dokončeno',
+    statLessons: 'Dokončeno lekcí: {n}\u00a0z\u00a0{m}', pct: '{n}\u00a0%', knowAria: 'Znalosti: {n}\u00a0%', statAcc: 'Správné odpovědi {p}\u00a0% ({ok}\u00a0z\u00a0{ans})', statAccNone: 'Správné odpovědi\u00a0—',
   },
 };

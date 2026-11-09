@@ -438,10 +438,10 @@
     assert(nums.length > 0 && nums.every((n) => n <= 100), 'percents > 100: ' + nums.join(','));
   });
 
-  test('edge: course with all 10 lessons done shows "Lessons 10 of 10"', async () => {
+  test('edge: course with all 10 lessons done shows "Lessons done: 10 of 10"', async () => {
     const app = await T.loadApp({ state: seed({ js: { done: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], ans: 20, ok: 20, xp: 0 } }) });
     app.$('.tab[data-tab="profile"]').click();
-    assert.eq(pstat(app, 'js').les, `Lessons 10${NBSP}of${NBSP}10`, 'lessons caption');
+    assert.eq(pstat(app, 'js').les, `Lessons done: 10${NBSP}of${NBSP}10`, 'lessons caption');
     assert.eq(app.$$('.krow[data-id="js"] .segbar i').length, 10, '10 segments');
   });
 

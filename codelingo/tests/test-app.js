@@ -344,24 +344,24 @@
   const statOf = (app, id) => { const r = app.$(`.krow[data-id="${id}"]`); return { name: r.querySelector('.course-head h2').textContent, pct: r.querySelector('.kpct').textContent, les: r.querySelector('.kles').textContent, acc: r.querySelector('.kacc').textContent }; };
   const NB = ' ';
 
-  test('app: profile blocks show "Lessons N of 10" and "Correct answers P% (ok of ans)", "—" without answers', async () => {
+  test('app: profile blocks show "Lessons done: N of 10" and "Correct answers P% (ok of ans)", "—" without answers', async () => {
     const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false }, prog: { js: { done: [0, 1, 2], ans: 30, ok: 24, xp: 0 }, py: { done: [], ans: 3, ok: 0, xp: 0 }, css: { done: [0], ans: 3, ok: 2, xp: 0 } } } });
     app.$('.tab[data-tab="profile"]').click();
     const c = T.collector();
     const js = statOf(app, 'js');
-    c.check(js.les === `Lessons 3${NB}of${NB}10`, 'js lessons: ' + js.les);
+    c.check(js.les === `Lessons done: 3${NB}of${NB}10`, 'js lessons: ' + js.les);
     c.check(js.acc === `Correct answers 80% (24${NB}of${NB}30)`, 'js accuracy: ' + js.acc);
     c.check(statOf(app, 'py').acc === `Correct answers 0% (0${NB}of${NB}3)`, 'py 0%: ' + statOf(app, 'py').acc);
     c.check(statOf(app, 'css').acc === `Correct answers 67% (2${NB}of${NB}3)`, 'css rounds 66.7 to 67: ' + statOf(app, 'css').acc);
     const html = statOf(app, 'html');
-    c.check(html.les === `Lessons 0${NB}of${NB}10`, 'untouched lessons: ' + html.les);
+    c.check(html.les === `Lessons done: 0${NB}of${NB}10`, 'untouched lessons: ' + html.les);
     c.check(html.acc === `Correct answers${NB}—`, 'no answers -> dash: ' + html.acc);
     c.check(!/\d/.test(html.acc), 'no number when there are no answers');
     c.check(!app.$('.lvl') && !/beginner|novice|expert|level/i.test(app.$('.klist').textContent), 'no level words');
     // ru wording from the SPEC
     const ru = await T.loadApp({ state: { settings: { lang: 'ru', sound: false, music: false }, prog: { js: { done: [0, 1, 2], ans: 30, ok: 24, xp: 0 } } } });
     ru.$('.tab[data-tab="profile"]').click();
-    c.check(statOf(ru, 'js').les === `Уроки 3${NB}из${NB}10`, 'ru lessons: ' + statOf(ru, 'js').les);
+    c.check(statOf(ru, 'js').les === `Пройдено уроков: 3${NB}из${NB}10`, 'ru lessons: ' + statOf(ru, 'js').les);
     c.check(statOf(ru, 'js').acc === `Верных ответов 80% (24${NB}из${NB}30)`, 'ru accuracy: ' + statOf(ru, 'js').acc);
     c.check(statOf(ru, 'html').acc === `Верных ответов${NB}—`, 'ru dash: ' + statOf(ru, 'html').acc);
     c.done();
@@ -389,7 +389,7 @@
     c.done();
   });
 
-  test('app: profile caption parts stack at 320px instead of shrinking or breaking words (R10)', async () => {
+  test('app: profile caption is always two left-aligned 13px lines, words whole (R10)', async () => {
     const prog = {}; window.COURSES.forEach((cr) => { prog[cr.id] = { done: cr.lessons.map((_, i) => i), ans: 1000, ok: 999, xp: 0 }; });
     const c = T.collector();
     for (const lang of ['en', 'ru', 'uk', 'cs']) {
@@ -406,10 +406,79 @@
           const rects = [...el.getClientRects()]; c.check(new Set(rects.map((x) => Math.round(x.top))).size === 1, `${id}: ${el.className} wraps inside`);
         });
         const a = les.getBoundingClientRect(), b = acc.getBoundingClientRect();
-        c.check(Math.round(b.top) === Math.round(a.top) || b.top >= a.bottom - 0.5, `${id}: caption parts overlap`);
+        c.check(Math.round(b.top - a.bottom) === 4, `${id}: accuracy not on its own line 4px below (${Math.round(b.top - a.bottom)})`);
+        c.check(Math.abs(a.left - b.left) < 0.5 && Math.abs(a.left - (rr.left + 18)) < 0.5, `${id}: caption lines not left-aligned`);
       });
       c.check(app.doc.documentElement.scrollWidth <= 320, `${lang}: horizontal overflow`);
     }
+    c.done();
+  });
+
+  test('app: all profile blocks have the same height at 320/375/430 in every language (R10)', async () => {
+    // Mixed data: untouched (dash), partial, complete with large counts.
+    const ids = window.COURSES.map((cr) => cr.id);
+    const prog = { [ids[0]]: { done: [0, 1, 2], ans: 30, ok: 24, xp: 0 }, [ids[1]]: { done: [...Array(10).keys()], ans: 1000, ok: 1000, xp: 0 }, [ids[2]]: { done: [], ans: 7, ok: 0, xp: 0 } };
+    const c = T.collector();
+    for (const lang of ['en', 'ru', 'uk', 'cs']) {
+      const app = await T.loadApp({ state: { settings: { lang, sound: false, music: false }, prog } });
+      app.$('.tab[data-tab="profile"]').click();
+      for (const w of [320, 375, 430]) {
+        app.win.frameElement.style.width = w + 'px'; app.win.frameElement.style.height = '800px'; await T.sleep(60);
+        const hs = app.$$('.krow').map((r) => Math.round(r.getBoundingClientRect().height));
+        c.check(new Set(hs).size === 1, `${lang} ${w}px block heights differ: ${hs.join(',')}`);
+      }
+    }
+    c.done();
+  });
+
+  test('app: profile a11y — section labelled by its h2, bar hidden, percent announced as knowledge', async () => {
+    const seed = (lang) => ({ state: { settings: { lang, sound: false, music: false }, prog: { js: { done: [0, 1, 2, 3, 4, 5], ans: 10, ok: 5, xp: 0 } } } });
+    const app = await T.loadApp(seed('ru'));
+    app.$('.tab[data-tab="profile"]').click();
+    const c = T.collector();
+    app.$$('.krow').forEach((r) => {
+      const h = app.doc.getElementById(r.getAttribute('aria-labelledby'));
+      c.check(r.tagName === 'SECTION' && h && h.tagName === 'H2' && r.contains(h), `${r.dataset.id}: aria-labelledby -> h2`);
+      const bar = r.querySelector('.segbar');
+      c.check(bar.getAttribute('aria-hidden') === 'true' && !bar.hasAttribute('role') && !bar.hasAttribute('aria-label'), `${r.dataset.id}: segbar not hidden`);
+      c.check(r.querySelector('.course-head .badge') !== null, `${r.dataset.id}: badge in the header`);
+    });
+    const k = app.$('.krow[data-id="js"] .kpct');
+    c.check(k.textContent === '45%' && k.getAttribute('aria-label') === 'Знания: 45%', `kpct ${k.textContent} / ${k.getAttribute('aria-label')}`);
+    c.check(app.$('.krow[data-id="js"] .kles').textContent === 'Пройдено уроков: 6 из 10', 'ru lessons');
+    // locale percent: cs uses a no-break space, on the course screen too
+    const cs = await T.loadApp(seed('cs'));
+    cs.$('.tab[data-tab="profile"]').click();
+    const row = cs.$('.krow[data-id="js"]');
+    c.check(row.querySelector('.kpct').textContent === '45 %', 'cs profile percent: ' + JSON.stringify(row.querySelector('.kpct').textContent));
+    c.check(row.querySelector('.kacc').textContent === 'Správné odpovědi 50 % (5 z 10)', 'cs accuracy: ' + row.querySelector('.kacc').textContent);
+    c.check(row.querySelector('.kles').textContent === 'Dokončeno lekcí: 6 z 10', 'cs lessons: ' + row.querySelector('.kles').textContent);
+    cs.$('.tab[data-tab="learn"]').click(); cs.$('.course[data-id="js"]').click();
+    const hk = cs.$('.course-head .kpct');
+    c.check(hk.textContent === '45 %' && hk.getAttribute('aria-label') === 'Znalosti: 45 %', 'cs course percent');
+    c.done();
+  });
+
+  test('app: Check hides a hint bubble with the answer prefix (no leak next to the result)', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false, hints: true } } });
+    const L = app.win.COURSES.find((cr) => cr.id === 'js').lessons[0];
+    const saved = L.tasks.map((x) => ({ ...x }));
+    const c = T.collector();
+    try {
+      for (const task of [{ t: 'f', q: 'Fill', c: 'v = ___', a: ['QQSECRET7'] }, { t: 'w', q: 'Write', a: ['QQSECRET7()'] }]) {
+        L.tasks.forEach((x) => { Object.keys(x).forEach((k) => delete x[k]); Object.assign(x, task); });
+        app.$('.tab[data-tab="learn"]').click(); app.$('.course[data-id="js"]').click(); app.$('.lesson-item[data-i="0"]').click();
+        for (let i = 0; i < 3; i++) app.$('#lmascot').click(); // three hints: the longest prefix
+        const b = app.$('#bubble');
+        c.check(!b.hidden && b.textContent.includes('QQSECR'), `${task.t}: precondition, hint shows the prefix: "${b.textContent}"`);
+        const el = app.$('#ans'); el.value = 'nope'; el.dispatchEvent(new app.win.Event('input', { bubbles: true }));
+        app.$('#checkBtn').click();
+        c.check(app.$('#sheet').classList.contains('bad'), `${task.t}: wrong sheet`);
+        c.check(app.$('#bubble').hidden, `${task.t}: bubble still visible after Check`);
+        c.check(!app.doc.body.innerHTML.includes('QQS') && !app.doc.body.textContent.includes('QQS'), `${task.t}: answer prefix still in the DOM`);
+        app.$('[data-act="quit"]').click();
+      }
+    } finally { L.tasks.forEach((x, i) => { Object.keys(x).forEach((k) => delete x[k]); Object.assign(x, saved[i]); }); }
     c.done();
   });
 
