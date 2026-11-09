@@ -25,7 +25,8 @@
     nativeCalls.length = 0; // leftovers of a test that already failed
     localStorage.removeItem(KEY);
     localStorage.setItem(KEY, JSON.stringify(state || { settings: { lang, sound: false, music: false } }));
-    if (frame) frame.remove();
+    // In-app Back calls history.go(); removing a frame mid-traversal stalls headless virtual time, so let it land.
+    if (frame) { await T.sleep(60); frame.remove(); }
     frame = document.createElement('iframe');
     if (size) { frame.style.width = size[0] + 'px'; frame.style.height = size[1] + 'px'; } // launch at this size
     document.body.appendChild(frame);
@@ -714,7 +715,8 @@
 
   test('app: corrupted localStorage does not crash the app', async () => {
     localStorage.setItem(KEY, '{not json');
-    if (frame) frame.remove();
+    // In-app Back calls history.go(); removing a frame mid-traversal stalls headless virtual time, so let it land.
+    if (frame) { await T.sleep(60); frame.remove(); }
     frame = document.createElement('iframe'); document.body.appendChild(frame);
     await new Promise((res) => { frame.onload = res; frame.src = '../index.html?t=' + Math.random(); });
     assert.eq(frame.contentDocument.querySelectorAll('.course').length, 6, 'home renders');

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.15';
+  const VERSION = '1.0.16';
   const KEY = 'codelingo.v1';
   const LANGS = ['en', 'ru', 'uk', 'cs'];
   const LANG_NAMES = { en: 'English', ru: 'Русский', uk: 'Українська', cs: 'Čeština' };
@@ -363,7 +363,7 @@
       items.push({ t: 'r', q: repeatQ, code: card.code, a: [card.code] });
     });
     const tasks = items.concat(lesson.tasks);
-    LS = { c, li, tasks, queue: tasks.map((_, i) => i), done: 0, total: tasks.length, wrong: new Set(), xp: 0, ans: 0, ok: 0, cur: null, finished: false };
+    LS = { c, li, tasks, queue: tasks.map((_, i) => i), done: 0, total: tasks.length, wrong: new Set(), xp: 0, ans: 0, ok: 0, tries: 0, cur: null, finished: false };
     $('#lmascot').innerHTML = mascotSVG();
     document.body.classList.add('in-lesson');
     $('#lesson').hidden = false;
@@ -394,11 +394,12 @@
   function renderTask(fresh) {
     const { task, perm } = LS.cur;
     const cur = LS.cur;
-    let h = task.t === 'k' ? '' : `<p class="q">${esc(tr(task.q))}</p>`;
+    // a11y: the question (or the card title) takes focus on a new item, so screen readers announce it.
+    let h = task.t === 'k' ? '' : `<p class="q" tabindex="-1" data-focus="item">${esc(tr(task.q))}</p>`;
     if (task.t === 'k') {
       // L1: "New" card — caption, title, explanation and the example. No keyboard, no scoring.
       const k = task.card;
-      h += `<div class="teach"><p class="knew">${esc(t('newCard'))}</p><h2 class="kt">${esc(tr(k.title))}</h2><p class="kx">${esc(tr(k.text))}</p>${codeBlock(k.code)}</div>`;
+      h += `<div class="teach"><p class="knew">${esc(t('newCard'))}</p><h1 class="kt" tabindex="-1" data-focus="item">${esc(tr(k.title))}</h1><p class="kx">${esc(tr(k.text))}</p>${codeBlock(k.code)}</div>`;
     } else if (task.t === 'r') {
       // L2: the example stays visible (also after a wrong answer); the answer is typed like a write task.
       h += codeBlock(task.code);
@@ -432,6 +433,7 @@
       body.innerHTML = h;
       if (fresh) body.scrollTop = 0;
       body.classList.toggle('grow', task.t === 'w' || task.t === 'r'); // the editor takes the free height
+      body.classList.toggle('center', task.t === 'k'); // a teach card sits in the middle of the free space
     }
     if (typed) renderEditor();
     // R13: the keyboard is docked under the Check footer for typed tasks until Check.
@@ -440,6 +442,8 @@
       announce(null);
       const f = document.activeElement;
       if (f && f !== document.body && $('#lesson').contains(f) && f.blur) f.blur(); // e.g. Check after "Continue"
+      const head = $('[data-focus="item"]', body);
+      if (head && !modalEl) head.focus({ preventScroll: true });
     }
     showKbd(typed && !cur.checked);
     $('#bar').firstElementChild.style.width = Math.round((100 * LS.done) / LS.total) + '%';
@@ -448,6 +452,8 @@
       const btn = $('#checkBtn'); btn.className = 'btn'; btn.textContent = t(task.t === 'k' ? 'gotIt' : 'check');
     }
     $('#checkBtn').disabled = !cur.checked && !canCheck();
+    // "Got it" looks disabled for the anti-double-tap window, so a fast tap is visibly not taken.
+    if (fresh && task.t === 'k') setTimeout(() => { if (LS && LS.cur === cur) $('#checkBtn').disabled = false; }, CHECK_GUARD_MS);
   }
 
   function answerValue() {
@@ -458,7 +464,7 @@
   }
   function canCheck() {
     const cur = LS.cur; if (!cur) return false;
-    if (cur.task.t === 'k') return true; // "Got it" is always enabled
+    if (cur.task.t === 'k') return performance.now() - cur.shownAt >= CHECK_GUARD_MS; // "Got it" after the guard
     if (cur.task.t === 'm') return cur.sel !== null;
     if (cur.task.t === 'o') return cur.picked.length > 0;
     return String(answerValue()).trim().length > 0;
@@ -484,16 +490,22 @@
     if (!canCheck()) return;
     const ok = isCorrect(cur.task, LS.c.id, answerValue());
     cur.checked = true; checkedAt = performance.now();
-    LS.ans++; if (ok) LS.ok++;
-    const p = prog(LS.c.id); p.ans++; if (ok) p.ok++;
-    save();
+    const rep = cur.task.t === 'r';
+    LS.tries++;
+    // L2: a repeat (copying the example) gives XP but is not part of accuracy, best or k%.
+    if (!rep) {
+      LS.ans++; if (ok) LS.ok++;
+      const p = prog(LS.c.id); p.ans++; if (ok) p.ok++;
+      save();
+    }
     if (ok) {
       LS.done++;
       LS.queue.shift();
-      LS.xp += LS.wrong.has(cur.ti) ? 2 : cur.hints ? 5 : 10;
+      LS.xp += rep ? 5 : LS.wrong.has(cur.ti) ? 2 : cur.hints ? 5 : 10;
     } else {
       LS.wrong.add(cur.ti);
-      LS.queue.push(LS.queue.shift());
+      // L2: a wrong repeat comes right back while the example is fresh; practice goes to the end.
+      if (!rep) LS.queue.push(LS.queue.shift());
     }
     hideBubble(); // a hint bubble may hold the start of the answer: never leave it next to the result
     renderTask(false);
@@ -534,7 +546,7 @@
     music.stop(); clearTapRetry();
     const p = prog(LS.c.id);
     if (!p.done.includes(LS.li)) p.done.push(LS.li);
-    const acc = LS.ans ? Math.round((100 * LS.ok) / LS.ans) : 0;
+    const acc = LS.ans ? Math.round((100 * LS.ok) / LS.ans) : 100; // only repeats: nothing was wrong
     p.best[LS.li] = Math.max(p.best[LS.li] || 0, acc);
     p.xp += LS.xp;
     S.days[dayKey()] = (S.days[dayKey()] || 0) + LS.xp;
@@ -549,9 +561,11 @@
     beep('done');
   }
 
-  function exitLesson(force, opener) {
+  function exitLesson(force, opener, fromPop) {
     // R12: an in-app modal instead of window.confirm. Music keeps playing while it is open.
-    if (!force && LS && !LS.finished && LS.ans > 0) { modal('quitQ', 'quit', () => exitLesson(true), { opener }); return; }
+    // Any checked answer (repeats too: they earned XP) makes quitting a question.
+    if (!force && LS && !LS.finished && LS.tries > 0) { modal('quitQ', 'quit', () => exitLesson(true), { opener }); return; }
+    if (!fromPop && history.state && history.state.cl === 'lesson') popLevel(1);
     LS = null;
     music.stop(); clearTapRetry();
     hideBubble();
@@ -563,6 +577,27 @@
   }
   // R8: the document never scrolls, only #screen; a new screen opens from the top.
   function resetScroll() { $('#screen').scrollTop = 0; }
+
+  /* ---------- History: Android / browser Back ---------- */
+  // Opening a course, the Guide or a lesson pushes one entry; Back (popstate) goes up one level.
+  // In-app Back buttons navigate at once and drop their entry with history.go(); the popstate that
+  // follows is skipped, so both paths leave the same history. Tab switches push nothing.
+  let skipPop = 0;
+  const histDepth = () => (history.state && history.state.cl ? Number(history.state.d) || 0 : 0);
+  function pushLevel(level) { try { history.pushState({ cl: level, d: histDepth() + 1 }, ''); } catch (e) { /* history unavailable */ } }
+  function popLevel(n) { const d = Math.min(n, histDepth()); if (d > 0) { skipPop++; history.go(-d); } }
+  function onPop() {
+    if (skipPop > 0) { skipPop--; return; }
+    if (modalEl) { modalCancel(); if (LS) pushLevel('lesson'); return; } // Back = Cancel; the lesson stays
+    if (LS) {
+      // Answers given: keep the lesson entry and ask (Cancel stays, Quit pops it like the X button).
+      if (!LS.finished && LS.tries > 0) { pushLevel('lesson'); exitLesson(false); return; }
+      exitLesson(true, null, true); return;
+    }
+    if (tab !== 'learn') return;
+    if (guide) guide = false; else if (courseId) courseId = null; else return;
+    render(); resetScroll();
+  }
 
   /* ---------- Mascot hints ---------- */
   let bubbleTimer = 0;
@@ -579,7 +614,7 @@
 
   function hint() {
     if (!LS || LS.finished || !LS.cur || LS.cur.checked) return bubble(t(LS ? 'hintNone' : 'hello'));
-    if (LS.cur.task.t === 'k') return bubble(t('hintNone')); // L4: no hint on a teach card
+    if (LS.cur.task.t === 'k' || LS.cur.task.t === 'r') return bubble(t('hintNone')); // L2/L4: the example is on screen
     if (!S.settings.hints) return bubble(t('hintsOff'));
     const cur = LS.cur; const task = cur.task;
     if (task.t === 'm') {
@@ -593,7 +628,7 @@
       }
       return bubble(t('hintNone'));
     }
-    if (task.t === 'f' || task.t === 'w' || task.t === 'r') {
+    if (task.t === 'f' || task.t === 'w') {
       if (cur.hints >= 3) return bubble(t('hintNone'));
       cur.hints++;
       const ans = String(task.a[0]);
@@ -791,6 +826,7 @@
   // At most one at a time. Focus goes to Cancel, Tab cycles inside, Esc / backdrop = cancel,
   // focus returns to the opener. The action fires once; a ghost tap right after closing is swallowed.
   let modalEl = null;
+  let modalCancel = () => {};
   let ghost = null; // { x, y, until }: where the closing tap was
   function modal(titleKey, okKey, onOk, opts = {}) {
     if (modalEl) return;
@@ -813,7 +849,7 @@
       closed = true;
       document.removeEventListener('keydown', onKey, true);
       behind.forEach((el) => { el.inert = false; el.removeAttribute('aria-hidden'); });
-      wrap.remove(); modalEl = null;
+      wrap.remove(); modalEl = null; modalCancel = () => {};
       ghost = ev && ev.detail > 0 ? { x: ev.clientX, y: ev.clientY, until: Date.now() + 400 } : null;
       if (ok) onOk();
       const shown = (el) => el.isConnected && el.getClientRects().length > 0;
@@ -840,7 +876,7 @@
     });
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(wrap);
-    modalEl = wrap;
+    modalEl = wrap; modalCancel = () => close(false);
     releaseAll(); // a held key must not keep repeating behind the modal
     behind.forEach((el) => { el.inert = true; el.setAttribute('aria-hidden', 'true'); }); // aria-hidden: iOS < 15.5 has no inert
     btns()[0].focus({ preventScroll: true });
@@ -870,12 +906,12 @@
     if (!el) { if (!e.target.closest('#bubble')) hideBubble(); return; }
     const act = el.dataset.act;
     switch (act) {
-      case 'tab': tab = el.dataset.tab; courseId = null; guide = false; render(); resetScroll(); break;
-      case 'course': courseId = el.dataset.id; guide = false; render(); resetScroll(); break;
-      case 'back': if (guide) guide = false; else courseId = null; render(); resetScroll(); break; // Guide → course → courses
-      case 'guide': guide = true; render(); resetScroll(); break;
+      case 'tab': popLevel(histDepth()); tab = el.dataset.tab; courseId = null; guide = false; render(); resetScroll(); break;
+      case 'course': pushLevel('course'); courseId = el.dataset.id; guide = false; render(); resetScroll(); break;
+      case 'back': popLevel(1); if (guide) guide = false; else courseId = null; render(); resetScroll(); break; // Guide → course → courses
+      case 'guide': pushLevel('guide'); guide = true; render(); resetScroll(); break;
       case 'edtap': tapEditor(e); break;
-      case 'lesson': startLesson(courseId, Number(el.dataset.i)); break;
+      case 'lesson': pushLevel('lesson'); startLesson(courseId, Number(el.dataset.i)); break;
       case 'mascot': if ($('#bubble').hidden) hint(); else { hideBubble(); if (LS) hint(); } break;
       case 'quit': exitLesson(false, el); break;
       case 'check': check(); break;
@@ -903,7 +939,7 @@
     const cur = LS && LS.cur;
     if (!typedTask(cur) || cur.checked || e.ctrlKey || e.metaKey || e.altKey || modalEl) return;
     const a = document.activeElement;
-    if (a && a !== document.body) return; // a focused key/button: Enter/Space activate it
+    if (a && a !== document.body && !a.matches('[data-focus="item"]')) return; // a focused key/button: Enter/Space activate it
     const map = { Backspace: 'bksp', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'enter' };
     if (map[e.key]) { e.preventDefault(); pressKey(map[e.key]); return; }
     if (e.key.length === 1) { e.preventDefault(); if (e.key === ' ') pressKey('space'); else if (cur && !cur.checked) insertText(e.key); }
@@ -934,6 +970,8 @@
 
   /* ---------- Boot ---------- */
   bindKbd();
+  window.addEventListener('popstate', onPop);
+  if (histDepth()) try { history.replaceState(null, ''); } catch (e) { /* ignore */ } // a reload starts on the course list
   load();
   applySettings();
   render();

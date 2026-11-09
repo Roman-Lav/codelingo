@@ -65,13 +65,15 @@
     assert.eq(cs(app.$('.teach .knew')).fontSize, '13px', 'caption 13px');
     assert(app.$('#kbd').hidden, 'no keyboard on a teach card');
     assert(!app.$('#ans'), 'no editor on a teach card');
-    assert(!btn(app).disabled, 'Got it is enabled');
+    assert(btn(app).disabled, 'Got it looks disabled during the 400 ms guard');
     assert.eq(btn(app).textContent, 'Got it', 'button label');
-    app.$('#lmascot').click();
-    assert.eq(app.$('#bubble').textContent, app.win.I18N.en.hintNone, 'mascot gives no hint');
     btn(app).click(); // too fast: guarded
     assert(isTeach(app), 'an immediate tap does not skip the card');
-    await press(app);
+    app.$('#lmascot').click();
+    assert.eq(app.$('#bubble').textContent, app.win.I18N.en.hintNone, 'mascot gives no hint');
+    await sleep(450);
+    assert(!btn(app).disabled, 'Got it is enabled after the guard');
+    btn(app).click();
     assert(app.$('#sheet').hidden, 'no result sheet for a card');
     const p = (app.stored().prog || {}).js;
     assert(!p || p.ans === 0, 'a card is not an answer');
@@ -88,7 +90,7 @@
     assert.eq(off.$('.teach .kt').textContent, 'Alpha ru', 'card title translated');
   });
 
-  test('teach: wrong repeat → "Not quite", example stays, re-queued at the end; accuracy and XP ignore the card', async () => {
+  test('teach: wrong repeat → "Not quite", example stays, retried right away; repeats give 5 XP but no accuracy', async () => {
     const app = await T.loadApp({ state: OFF, teach: { js: [[A]] } });
     setTasks(app, 'js', 0, [MCQ]);
     open(app);
@@ -101,24 +103,26 @@
     assert(!app.$('#sheet').textContent.includes(A.code), 'the answer is not revealed in the sheet');
     assert.eq(barPct(app), 33, 'wrong answer does not advance the bar (1 of 3)');
     await press(app);
-    assert(app.$('.opt'), 'practice task comes before the re-queued repeat');
-    app.$('.opt[data-i="0"]').click(); btn(app).click();
-    await press(app);
-    assert.eq(app.$('#lessonBody .q').textContent, 'Repeat the example', 'repeat re-queued at the end');
+    assert.eq(app.$('#lessonBody .q').textContent, 'Repeat the example', 'the repeat comes back immediately');
     assert.eq(app.$('#lessonBody pre.code').textContent, A.code, 'example visible on the retry');
-    // Hint for 'r' = the start of the answer, like a write task.
+    assert.eq(T.edText(app), '', 'fresh editor');
+    // No hint on a repeat: the example is on screen.
     app.$('#lmascot').click();
-    assert(app.$('#bubble pre') && A.code.startsWith(app.$('#bubble pre').textContent.replace('…', '')), 'hint shows the start of the example');
+    assert.eq(app.$('#bubble').textContent, app.win.I18N.en.hintNone, 'no hint on a repeat');
+    assert(!app.$('#bubble pre'), 'no code in the bubble');
     app.$('#lmascot').click(); // close the bubble
     T.typeText(app, A.code); btn(app).click();
     assert(app.$('#sheet').classList.contains('ok'), 'correct on retry');
     await press(app);
+    assert(app.$('.opt'), 'practice after the repeat');
+    app.$('.opt[data-i="0"]').click(); btn(app).click();
+    await press(app);
     assert(app.$('.finish'), 'finish screen');
     const p = app.stored().prog.js;
-    assert.eq(p.ans, 3, 'answers: wrong repeat, MCQ, repeat (the card is not counted)');
-    assert.eq(p.ok, 2, 'correct answers');
-    assert.eq(p.best[0], 67, 'best accuracy only from scored tasks');
-    assert.eq(p.xp, 12, 'XP: MCQ 10 + repeat after a mistake 2');
+    assert.eq(p.ans, 1, 'only the practice task is an answer (repeats are not in accuracy)');
+    assert.eq(p.ok, 1, 'correct answers');
+    assert.eq(p.best[0], 100, 'best only from scored tasks');
+    assert.eq(p.xp, 15, 'XP: MCQ 10 + repeat 5 (also after a mistake)');
   });
 
   test('teach: no TEACH, missing course, missing lesson or bad cards → the lesson starts with practice', async () => {
@@ -276,12 +280,12 @@
       await press(app);
       T.typeText(app, A.code); btn(app).click();
       assert(app.$('#sheet').classList.contains('ok'), 'accepted');
-      const p = app.stored().prog.js;
-      assert.eq(p.ans, 1, 'only the repeat is counted'); assert.eq(p.ok, 1, 'ok');
+      const p = (app.stored().prog || {}).js;
+      assert(!p || (p.ans === 0 && p.ok === 0), 'a repeat is not counted in accuracy either');
     }
   });
 
-  test('teach/edge: wrong r then correct r = 2 XP (like practice); accuracy counts both attempts', async () => {
+  test('teach/edge: wrong r then correct r = 5 XP; r is not in accuracy (ans=1, ok=1, best=100)', async () => {
     const app = await T.loadApp({ state: OFF, teach: { js: [[A]] } });
     setTasks(app, 'js', 0, [MCQ]);
     open(app);
@@ -289,15 +293,16 @@
     T.typeText(app, 'zzz'); btn(app).click();
     assert(app.$('#sheet').classList.contains('bad'), 'wrong');
     await press(app);
-    app.$('.opt[data-i="0"]').click(); btn(app).click(); await press(app);
+    assert(app.$('#ans') && !app.$('.opt'), 'the repeat again, before practice');
     T.typeText(app, A.code); btn(app).click();
     assert(app.$('#sheet').classList.contains('ok'), 'correct on retry');
     await press(app);
+    app.$('.opt[data-i="0"]').click(); btn(app).click(); await press(app);
     assert(app.$('.finish'), 'finish');
     const p = app.stored().prog.js;
-    assert.eq(p.xp - 10, 2, 'repeat after a mistake is worth 2 XP (practice MCQ 10)');
-    assert.eq(p.ans, 3, 'attempts: wrong r, MCQ, correct r'); assert.eq(p.ok, 2, 'correct');
-    assert.eq(p.best[0], 67, 'accuracy = 2 of 3 attempts');
+    assert.eq(p.xp - 10, 5, 'a repeat is worth 5 XP (practice MCQ 10)');
+    assert.eq(p.ans, 1, 'attempts: only the MCQ'); assert.eq(p.ok, 1, 'correct');
+    assert.eq(p.best[0], 100, 'accuracy from practice only');
   });
 
   test('teach/edge: quit during cards needs no confirm; after one scored answer it does', async () => {
@@ -322,7 +327,7 @@
     const app = await T.loadApp({ state: OFF, teach: FIX });
     open(app);
     const tasks = app.win.COURSES.find((c) => c.id === 'js').lessons[0].tasks;
-    const n = 2 + tasks.length;
+    const n = tasks.length; // repeats are not answers
     for (const cd of [A, B]) { await press(app); T.typeText(app, cd.code); btn(app).click(); await press(app); }
     let guard = 0;
     while (!app.$('.finish') && guard++ < 30) {
@@ -335,7 +340,7 @@
     }
     assert(app.$('.finish'), 'finish screen');
     const p = app.stored().prog.js;
-    assert.eq(p.ans, n, 'cards are not answers'); assert.eq(p.ok, n, 'all ok');
+    assert.eq(p.ans, n, 'cards and repeats are not answers'); assert.eq(p.ok, n, 'all ok');
     assert.eq(p.best[0], 100, 'best 100 from scored tasks');
   });
 
@@ -403,5 +408,127 @@
     })));
     k.check(n >= 200, `expected ~237 cards, found ${n}`);
     k.done();
+  });
+
+  // ---- Iteration 2: layout, a11y, history ----
+  test('teach: card is centred in the free height; a tall card scrolls from the top, not clipped', async () => {
+    const app = await T.loadApp({ state: OFF, teach: FIX, size: [390, 844] });
+    open(app);
+    const body = app.$('#lessonBody').getBoundingClientRect(); const card = app.$('.teach').getBoundingClientRect();
+    const above = card.top - body.top, below = body.bottom - card.bottom;
+    assert(above > 100 && Math.abs(above - below) <= 16, `centred: ${Math.round(above)}px above, ${Math.round(below)}px below`);
+    const long = 'Long explanation text that wraps over many lines. '.repeat(12);
+    const tall = await T.loadApp({ state: OFF, teach: { js: [[card0(long)]] }, size: [320, 568] });
+    open(tall);
+    const lb = tall.$('#lessonBody'); const r = lb.getBoundingClientRect();
+    assert(lb.scrollHeight > lb.clientHeight, 'tall card overflows the body');
+    assert.eq(lb.scrollTop, 0, 'starts at the top');
+    assert(tall.$('.teach .knew').getBoundingClientRect().top >= r.top, 'caption not clipped above the body');
+    assert(/(auto|scroll)/.test(tall.win.getComputedStyle(lb).overflowY), 'body scrolls');
+  });
+  const card0 = (text) => card('Tall', text, 'x = 1');
+
+  test('teach: a11y — card title is h1; focus moves to the heading / prompt of every new item', async () => {
+    const app = await T.loadApp({ state: OFF, teach: { js: [[A]] } });
+    setTasks(app, 'js', 0, [MCQ]);
+    open(app);
+    const h = app.$('.teach .kt');
+    assert.eq(h.tagName, 'H1', 'card title is h1');
+    assert.eq(app.doc.activeElement, h, 'focus on the card title');
+    assert.eq(h.getAttribute('tabindex'), '-1', 'focusable only by script');
+    await press(app);
+    assert.eq(app.doc.activeElement, app.$('#lessonBody .q'), 'focus on the repeat prompt');
+    // A hardware keyboard still types while the prompt has focus.
+    app.doc.activeElement.dispatchEvent(new app.win.KeyboardEvent('keydown', { key: 'x', bubbles: true, cancelable: true }));
+    assert.eq(T.edText(app), 'x', 'hardware key typed with the prompt focused');
+    T.tapKey(app, 'bksp');
+    T.typeText(app, A.code); btn(app).click(); await press(app);
+    assert.eq(app.doc.activeElement, app.$('#lessonBody .q'), 'focus on the practice prompt');
+    // Guide keeps h1 course → h2 lesson → h3 card.
+    const g = await T.loadApp({ state: OFF, teach: FIX });
+    g.$('.course[data-id="js"]').click(); g.$('[data-act="guide"]').click();
+    assert.eq(g.$('.course-head h1') && g.$('.glt').tagName + g.$('.gcard .kt').tagName, 'H2H3', 'guide headings');
+  });
+
+  test('teach: .kt / .glt / .q line-height on the 8px grid', async () => {
+    const app = await T.loadApp({ state: OFF, teach: FIX });
+    open(app);
+    assert.eq(app.win.getComputedStyle(app.$('.teach .kt')).lineHeight, '24px', '.kt');
+    await press(app);
+    assert.eq(app.win.getComputedStyle(app.$('#lessonBody .q')).lineHeight, '24px', '.q');
+    const g = await T.loadApp({ state: OFF, teach: FIX });
+    g.$('.course[data-id="js"]').click(); g.$('[data-act="guide"]').click();
+    assert.eq(g.win.getComputedStyle(g.$('.glt')).lineHeight, '24px', '.glt');
+  });
+
+  const pop = (app) => app.win.dispatchEvent(new app.win.PopStateEvent('popstate', { state: null }));
+  const settle = () => sleep(120);
+  test('history: Back (popstate) goes up one level: Guide → course → list; lesson exits or asks', async () => {
+    const app = await T.loadApp({ state: OFF, teach: FIX });
+    const scr = app.$('#screen');
+    app.$('.course[data-id="js"]').click(); app.$('[data-act="guide"]').click();
+    pop(app); assert.eq(scr.dataset.view, 'course', 'Guide → course');
+    pop(app); assert.eq(scr.dataset.view, 'learn', 'course → list');
+    pop(app); assert.eq(scr.dataset.view, 'learn', 'list stays');
+    // Lesson without answers: Back exits at once.
+    app.$('.course[data-id="js"]').click(); app.$('.lesson-item[data-i="0"]').click();
+    pop(app);
+    assert(app.$('#lesson').hidden && !app.$('.modal'), 'no answers: lesson closed without a question');
+    assert.eq(scr.dataset.view, 'course', 'back on the course');
+    // After an answer: Back asks; Back again = Cancel; Quit closes.
+    app.$('.lesson-item[data-i="0"]').click();
+    await press(app); T.typeText(app, A.code); btn(app).click();
+    pop(app);
+    assert(app.$('.modal') && !app.$('#lesson').hidden, 'answers given: quit question, lesson still open');
+    pop(app);
+    assert(!app.$('.modal') && !app.$('#lesson').hidden, 'Back on the question = Cancel');
+    pop(app);
+    app.$('.modal [data-m="ok"]').click();
+    assert(app.$('#lesson').hidden, 'Quit closes the lesson');
+    assert.eq(scr.dataset.view, 'course', 'course after quitting');
+    // Finished lesson: Back simply closes it.
+    const f = await T.loadApp({ state: OFF, teach: {} });
+    setTasks(f, 'js', 0, [MCQ]);
+    open(f); f.$('.opt[data-i="0"]').click(); btn(f).click(); await press(f);
+    assert(f.$('.finish'), 'finish screen');
+    pop(f);
+    assert(f.$('#lesson').hidden && !f.$('.modal'), 'finished lesson closed by Back');
+  });
+
+  test('history: real history.back() and in-app Back stay in sync (no stale entries)', async () => {
+    const app = await T.loadApp({ state: OFF, teach: FIX });
+    const H = app.win.history; const scr = app.$('#screen');
+    const depth = () => (H.state && H.state.cl ? H.state.d : 0);
+    app.$('.course[data-id="js"]').click(); app.$('[data-act="guide"]').click();
+    assert.eq(depth(), 2, 'course + Guide pushed');
+    H.back(); await settle();
+    assert.eq(scr.dataset.view, 'course', 'history.back → course'); assert.eq(depth(), 1, 'one entry left');
+    app.$('[data-act="back"]').click(); await settle();
+    assert.eq(scr.dataset.view, 'learn', 'in-app Back → list'); assert.eq(depth(), 0, 'no stale course entry');
+    app.$('.course[data-id="js"]').click(); app.$('[data-act="guide"]').click();
+    app.$('[data-act="back"]').click(); await settle();
+    assert.eq(scr.dataset.view, 'course', 'in-app Back from the Guide'); assert.eq(depth(), 1, 'Guide entry dropped');
+    app.$('.lesson-item[data-i="0"]').click(); assert.eq(depth(), 2, 'lesson pushed');
+    app.$('[data-act="quit"]').click(); await settle();
+    assert(app.$('#lesson').hidden, 'X closes the lesson'); assert.eq(scr.dataset.view, 'course', 'course');
+    assert.eq(depth(), 1, 'lesson entry dropped by X');
+    // Quit via the modal (after an answer) also drops the entry.
+    app.$('.lesson-item[data-i="0"]').click();
+    await press(app); T.typeText(app, A.code); btn(app).click();
+    app.$('[data-act="quit"]').click(); app.$('.modal [data-m="ok"]').click(); await settle();
+    assert.eq(depth(), 1, 'lesson entry dropped after Quit in the modal');
+    // Back key with answers → question → Quit: one entry less, still the course.
+    app.$('.lesson-item[data-i="0"]').click();
+    await press(app); T.typeText(app, A.code); btn(app).click();
+    H.back(); await settle();
+    assert(app.$('.modal'), 'question on Back'); assert.eq(depth(), 2, 'lesson entry restored while asking');
+    app.$('.modal [data-m="ok"]').click(); await settle();
+    assert.eq(depth(), 1, 'quit pops it'); assert.eq(scr.dataset.view, 'course', 'course');
+    // A tab switch unwinds our entries (tabs push nothing).
+    app.$('[data-act="guide"]').click(); assert.eq(depth(), 2, 'Guide pushed');
+    app.$('.tab[data-tab="profile"]').click(); await settle();
+    assert.eq(depth(), 0, 'tab switch leaves no entries'); assert.eq(scr.dataset.view, 'profile', 'profile shown');
+    app.$('.tab[data-tab="learn"]').click(); await settle();
+    assert.eq(scr.dataset.view, 'learn', 'learn list');
   });
 })();

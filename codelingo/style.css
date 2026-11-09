@@ -25,6 +25,7 @@
   --fs-title: 22px;
   --fs-body: 17px;
   --fs-caption: 13px;
+  --lh-body: 24px; /* 17px text on the 8px grid (R10) */
   --col: 560px; /* content column; wider from 700px */
   color-scheme: light;
 }
@@ -124,11 +125,18 @@ button.card:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: 
 
 /* ---------- Teach cards (L1) and the course Guide (L5) ---------- */
 .knew { font-size: var(--fs-caption); color: var(--muted); margin-bottom: 8px; }
-.kt { font-size: var(--fs-body); font-weight: 600; line-height: 1.4; margin-bottom: 8px; overflow-wrap: anywhere; }
-.kx { font-size: var(--fs-body); font-weight: 400; margin-bottom: var(--gap); overflow-wrap: anywhere; }
+.kt { font-size: var(--fs-body); font-weight: 600; line-height: var(--lh-body); margin-bottom: 8px; overflow-wrap: anywhere; }
+.kx { font-size: var(--fs-body); font-weight: 400; line-height: var(--lh-body); margin-bottom: var(--gap); overflow-wrap: anywhere; }
+/* A teach card is centred in the free height of the lesson body; auto margins collapse to 0 when it is
+   taller, so it then scrolls from the top instead of being clipped. */
+.lbody.center { display: flex; flex-direction: column; }
+.lbody.center .teach { margin: auto 0; }
+.teach pre.code { margin-bottom: 0; }
+/* The item heading gets focus only for screen readers (a11y); no focus ring on static text. */
+[data-focus="item"]:focus { outline: none; }
 .guide { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--section); }
 .gles { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); }
-.glt { font-size: var(--fs-body); font-weight: 600; line-height: 1.4; }
+.glt { font-size: var(--fs-body); font-weight: 600; line-height: var(--lh-body); }
 /* Static blocks: border like .card, no shadow (not buttons, R10). */
 .gcard { background: var(--surface); border: 2px solid var(--line); padding: var(--gap); min-width: 0; }
 .gcard pre.code { margin-bottom: 0; }
@@ -195,7 +203,7 @@ button.card:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: 
 .x { width: 44px; height: 44px; display: grid; place-items: center; flex: none; }
 .x svg { width: 16px; height: 16px; }
 .lbody { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 16px 16px; max-width: 560px; width: 100%; margin: 0 auto; }
-.q { font-weight: 600; margin: 0 0 16px; }
+.q { font-weight: 600; line-height: var(--lh-body); margin: 0 0 16px; }
 pre.code { background: var(--code-bg); border: 2px solid var(--line); padding: 16px; overflow-x: auto; font-size: var(--code-size); line-height: 1.55; margin-bottom: 16px; white-space: pre; }
 .opts { display: flex; flex-direction: column; gap: 16px; }
 .opts.locked { pointer-events: none; }

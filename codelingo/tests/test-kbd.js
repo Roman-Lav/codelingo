@@ -142,7 +142,7 @@
       T.up(app, k, 77);
       k.click(); // the compatibility click that follows a tap
       assert.eq(text(app), 'q', 'one character per tap');
-      assert(app.doc.activeElement === app.doc.body, 'the key did not take focus');
+      assert(!app.doc.activeElement.closest('#kbd'), 'the key did not take focus');
       await sleep(850);
       k.click(); // keyboard / switch-control activation without a pointer
       assert.eq(text(app), 'qq', 'click without a pointer press types');
@@ -308,7 +308,7 @@
       const btn = app.$('#checkBtn'); btn.focus(); btn.click();
       assert(app.$('#sheet').classList.contains('ok'), 'checked');
       await sleep(420); btn.focus(); btn.click(); // Continue -> next task (the same write task)
-      assert(app.doc.activeElement === app.doc.body, 'focus left Check on the new task: ' + app.doc.activeElement.tagName);
+      assert(app.doc.activeElement.matches('[data-focus="item"]'), 'focus moved from Check to the new task prompt: ' + app.doc.activeElement.tagName);
       app.doc.body.dispatchEvent(new app.win.KeyboardEvent('keydown', { key: 'z', bubbles: true, cancelable: true }));
       assert.eq(text(app), 'z', 'hardware typing works on the next task');
     });

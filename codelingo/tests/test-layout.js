@@ -306,7 +306,7 @@
           const r = pre.getBoundingClientRect();
           pre.dispatchEvent(new app.win.MouseEvent('click', { bubbles: true, clientX: r.right - 4, clientY: r.bottom - 4 }));
           assert.eq(app.$('#ans .et').textContent, 'ab', `${course.id} t${i + 1}: tap on pre did not put the caret at the end`);
-          assert(app.doc.activeElement === app.doc.body, 'nothing focused');
+          assert(app.doc.activeElement === app.doc.body || app.doc.activeElement.matches('[data-focus="item"]'), 'no control focused (only the item heading, a11y)');
           break;
         }
         solve(app, lesson); await cont(app);
