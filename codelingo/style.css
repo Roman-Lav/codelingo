@@ -119,6 +119,20 @@ button.card:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: 
 .go { background: var(--accent); color: var(--accent-ink); border: 2px solid var(--line); font: 600 var(--fs-caption)/1 var(--sans); padding: 8px; }
 .lesson-item.locked { box-shadow: none; color: var(--muted); border-color: var(--muted); }
 .lesson-item.locked .st { color: var(--muted); }
+/* L5: secondary full-width button under the course header (fits 320px in every language). */
+.guide-btn { margin-bottom: var(--section); }
+
+/* ---------- Teach cards (L1) and the course Guide (L5) ---------- */
+.knew { font-size: var(--fs-caption); color: var(--muted); margin-bottom: 8px; }
+.kt { font-size: var(--fs-body); font-weight: 600; line-height: 1.4; margin-bottom: 8px; overflow-wrap: anywhere; }
+.kx { font-size: var(--fs-body); font-weight: 400; margin-bottom: var(--gap); overflow-wrap: anywhere; }
+.guide { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--section); }
+.gles { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); }
+.glt { font-size: var(--fs-body); font-weight: 600; line-height: 1.4; }
+/* Static blocks: border like .card, no shadow (not buttons, R10). */
+.gcard { background: var(--surface); border: 2px solid var(--line); padding: var(--gap); min-width: 0; }
+.gcard pre.code { margin-bottom: 0; }
+.gempty { color: var(--muted); }
 
 /* ---------- Tab bar ---------- */
 .tabbar {

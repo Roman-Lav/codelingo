@@ -18,7 +18,10 @@
   };
 
   // Fresh app instance. `state` optionally pre-seeds localStorage; `lang` forces UI language.
-  T.loadApp = async ({ state, lang = 'en', size } = {}) => {
+  // `teach`: teach cards (L1) the app sees. Default {} — no cards, so practice tests stay independent of
+  // courses/teach-*.js; an object (fixture) replaces window.TEACH; 'real' keeps the loaded files.
+  // The app reads window.TEACH when a lesson / the Guide opens, so setting it after boot is enough.
+  T.loadApp = async ({ state, lang = 'en', size, teach = {} } = {}) => {
     nativeCalls.length = 0; // leftovers of a test that already failed
     localStorage.removeItem(KEY);
     localStorage.setItem(KEY, JSON.stringify(state || { settings: { lang, sound: false, music: false } }));
@@ -30,6 +33,7 @@
     const win = frame.contentWindow; const doc = frame.contentDocument;
     stubNative(win);
     await waitFor(() => win.__codelingo, 3000, 'app boot');
+    if (teach !== 'real') win.TEACH = teach === null ? undefined : JSON.parse(JSON.stringify(teach));
     return { win, doc, $: (s) => doc.querySelector(s), $$: (s) => [...doc.querySelectorAll(s)], stored: () => JSON.parse(localStorage.getItem(KEY)) };
   };
 

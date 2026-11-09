@@ -50,7 +50,7 @@ DEVICES = {
     "ipad":       (820, 1180, 2, 24, 20, 0, 0, True),
     "desktop":    (1280, 800, 1, 0, 0, 0, 0, False),
 }
-SCREENS = ["learn", "course", "lesson", "lesson-checked", "lesson-hint", "lesson-fill", "lesson-write", "profile", "settings"]
+SCREENS = ["learn", "course", "guide", "lesson-teach", "lesson-repeat", "lesson", "lesson-checked", "lesson-hint", "lesson-fill", "lesson-write", "profile", "settings"]
 
 # Navigation: each screen is reached from a fresh home screen.
 NAV_JS = r"""
@@ -80,10 +80,36 @@ NAV_JS = r"""
   };
   if (screen === 'learn') return 'ok';
   if (screen === 'course') { click($('[data-act="course"]')); return 'ok'; }
+  // L5: the Guide of the course with the most card text (stress case).
+  if (screen === 'guide') {
+    const size = (id) => JSON.stringify((window.TEACH || {})[id] || []).length;
+    const id = window.COURSES.map((c) => c.id).sort((a, b) => size(b) - size(a))[0];
+    click($(`[data-act="course"][data-id="${id}"]`)); await sleep(50);
+    click($('[data-act="guide"]')); return 'ok';
+  }
+  // L1/L2: the longest teach card of any course is put first in lesson 1 of its course.
+  if (screen === 'lesson-teach' || screen === 'lesson-repeat') {
+    let best = null;
+    Object.keys(window.TEACH || {}).forEach((id) => (window.TEACH[id] || []).forEach((cards) => (cards || []).forEach((k) => {
+      const n = JSON.stringify(k).length; if (!best || n > best.n) best = { id, k, n };
+    })));
+    if (!best) return 'no teach cards loaded';
+    window.TEACH[best.id][0] = [best.k];
+    await openLesson(best.id);
+    if (!document.querySelector('#lessonBody .teach')) return 'no teach card on screen';
+    if (screen === 'lesson-repeat') {
+      await sleep(450); click($('#checkBtn')); await sleep(50);
+      if (!$('#ans') || $('#kbd').hidden) return 'no repeat task with the keyboard';
+      'abc'.split('').forEach(tapKey); await sleep(50);
+    }
+    return 'ok';
+  }
   if (screen === 'profile' || screen === 'settings') { click($(`[data-act="tab"][data-tab="${screen}"]`)); return 'ok'; }
   if (screen.startsWith('lesson')) {
     const typed = { 'lesson-fill': 'f', 'lesson-write': 'w' }[screen];
-    await openLesson(typed ? typedCourse(typed) : window.COURSES[0].id);
+    const id = typed ? typedCourse(typed) : window.COURSES[0].id;
+    if (window.TEACH) window.TEACH[id] = []; // practice screens: start straight with the task
+    await openLesson(id);
     if (screen === 'lesson-hint') { click($('#lmascot')); await sleep(200); return 'ok'; }
     const answerAny = () => {
       const opt = document.querySelector('.opt:not([disabled])');

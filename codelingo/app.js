@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.14';
+  const VERSION = '1.0.15';
   const KEY = 'codelingo.v1';
   const LANGS = ['en', 'ru', 'uk', 'cs'];
   const LANG_NAMES = { en: 'English', ru: 'Русский', uk: 'Українська', cs: 'Čeština' };
@@ -180,7 +180,8 @@
       const got = norm(task.c.replace('___', () => input), lang);
       return task.a.some((a) => norm(task.c.replace('___', () => a), lang) === got);
     }
-    if (task.t === 'w') { const got = norm(input, lang); return got !== '' && task.a.some((a) => norm(a, lang) === got); }
+    // 'r' (repeat the teach card's example, L2) is checked exactly like a write task.
+    if (task.t === 'w' || task.t === 'r') { const got = norm(input, lang); return got !== '' && task.a.some((a) => norm(a, lang) === got); }
     if (task.t === 'o') return norm(input.join(' '), lang) === norm(task.a.join(' '), lang);
     return false;
   }
@@ -207,6 +208,15 @@
   /* ---------- Views ---------- */
   let tab = 'learn';
   let courseId = null;
+  let guide = false; // L5: the course Guide is open over the course screen
+
+  // L1: teach cards of a course / lesson from courses/teach-<id>.js. Read on use, so a missing file,
+  // course or lesson simply means "no cards" (the lesson starts with practice, the Guide is empty).
+  const validCard = (k) => isObj(k) && typeof k.title === 'string' && typeof k.text === 'string' && typeof k.code === 'string' && k.code.trim() !== '';
+  const teachCards = (id, li) => {
+    const T = window.TEACH && window.TEACH[id];
+    return Array.isArray(T) && Array.isArray(T[li]) ? T[li].filter(validCard) : [];
+  };
 
   function header(title, withBack) {
     return `<header class="top">
@@ -234,6 +244,7 @@
     const p = prog(id);
     // R9: the course percent is the only number in the UI; it looks exactly like the course name.
     return header('', true) + `<div class="course-head"><span class="badge">${esc(c.tag)}</span><h1>${esc(c.name)}</h1>${kpct(c)}</div>
+      <button class="btn ghost guide-btn" data-act="guide">${esc(t('guide'))}</button>
       <div class="list">` + c.lessons.map((L, i) => {
         const done = p.done.includes(i);
         const open = done || i === 0 || p.done.includes(i - 1);
@@ -243,6 +254,17 @@
           <span class="st">${st}</span>
         </button>`;
       }).join('') + '</div>';
+  }
+
+  // L5: every teach card of the course, grouped by lesson. Static blocks (no shadow); all lessons open.
+  function viewGuide(id) {
+    const c = COURSES.find((x) => x.id === id);
+    const groups = c.lessons.map((L, i) => ({ L, cards: teachCards(id, i) })).filter((g) => g.cards.length);
+    const body = groups.length ? groups.map((g) => `<section class="gles">
+        <h2 class="glt">${esc(tr(g.L.title))}</h2>
+        ${g.cards.map((k) => `<div class="gcard"><h3 class="kt">${esc(tr(k.title))}</h3><p class="kx">${esc(tr(k.text))}</p>${codeBlock(k.code)}</div>`).join('')}
+      </section>`).join('') : `<p class="gempty">${esc(t('guideEmpty'))}</p>`;
+    return header('', true) + `<div class="course-head"><span class="badge">${esc(c.tag)}</span><h1>${esc(c.name)}</h1></div><div class="guide">${body}</div>`;
   }
 
   // Colour of a passed lesson by its best accuracy. Lessons passed before best was stored
@@ -306,8 +328,9 @@
 
   function render() {
     const scr = $('#screen');
-    scr.dataset.view = tab === 'learn' ? (courseId ? 'course' : 'learn') : tab;
-    if (tab === 'learn') scr.innerHTML = courseId ? viewCourse(courseId) : viewLearn();
+    if (guide && (tab !== 'learn' || !courseId)) guide = false;
+    scr.dataset.view = tab === 'learn' ? (courseId ? (guide ? 'guide' : 'course') : 'learn') : tab;
+    if (tab === 'learn') scr.innerHTML = courseId ? (guide ? viewGuide(courseId) : viewCourse(courseId)) : viewLearn();
     else if (tab === 'profile') scr.innerHTML = viewProfile();
     else scr.innerHTML = viewSettings();
     renderTabs();
@@ -332,7 +355,15 @@
   function startLesson(cid, li) {
     const c = COURSES.find((x) => x.id === cid);
     const lesson = c.lessons[li];
-    LS = { c, li, tasks: lesson.tasks, queue: lesson.tasks.map((_, i) => i), done: 0, total: lesson.tasks.length, wrong: new Set(), xp: 0, ans: 0, ok: 0, cur: null, finished: false };
+    // L1-L3: each teach card ('k') is followed by its repeat task ('r'), then the lesson's practice tasks.
+    const repeatQ = LANGS.map((l) => (window.I18N[l] || window.I18N.en).repeatQ).join('§');
+    const items = [];
+    teachCards(c.id, li).forEach((card) => {
+      items.push({ t: 'k', card });
+      items.push({ t: 'r', q: repeatQ, code: card.code, a: [card.code] });
+    });
+    const tasks = items.concat(lesson.tasks);
+    LS = { c, li, tasks, queue: tasks.map((_, i) => i), done: 0, total: tasks.length, wrong: new Set(), xp: 0, ans: 0, ok: 0, cur: null, finished: false };
     $('#lmascot').innerHTML = mascotSVG();
     document.body.classList.add('in-lesson');
     $('#lesson').hidden = false;
@@ -345,7 +376,7 @@
     if (!LS.queue.length) return finishLesson();
     const ti = LS.queue[0];
     const task = LS.tasks[ti];
-    const cur = { ti, task, sel: null, picked: [], bank: null, perm: null, hints: 0, removed: new Set(), hl: -1, checked: false, text: '', caret: 0 };
+    const cur = { ti, task, sel: null, picked: [], bank: null, perm: null, hints: 0, removed: new Set(), hl: -1, checked: false, text: '', caret: 0, shownAt: performance.now() };
     if (task.t === 'm') cur.perm = shuffle(task.o.map((_, i) => i));
     if (task.t === 'o') {
       const toks = task.a.concat(task.d).map((x) => ({ x }));
@@ -363,8 +394,16 @@
   function renderTask(fresh) {
     const { task, perm } = LS.cur;
     const cur = LS.cur;
-    let h = `<p class="q">${esc(tr(task.q))}</p>`;
-    if (task.t === 'm') {
+    let h = task.t === 'k' ? '' : `<p class="q">${esc(tr(task.q))}</p>`;
+    if (task.t === 'k') {
+      // L1: "New" card — caption, title, explanation and the example. No keyboard, no scoring.
+      const k = task.card;
+      h += `<div class="teach"><p class="knew">${esc(t('newCard'))}</p><h2 class="kt">${esc(tr(k.title))}</h2><p class="kx">${esc(tr(k.text))}</p>${codeBlock(k.code)}</div>`;
+    } else if (task.t === 'r') {
+      // L2: the example stays visible (also after a wrong answer); the answer is typed like a write task.
+      h += codeBlock(task.code);
+      h += `<div id="ans" class="write ed" role="textbox" aria-multiline="true" aria-label="${esc(t('ansLabel'))}" aria-live="off" data-act="edtap"></div>`;
+    } else if (task.t === 'm') {
       if (task.c) h += codeBlock(task.c);
       h += `<div class="opts ${cur.checked ? 'locked' : ''}">` + perm.map((i) => {
         const o = optText(task.o[i]);
@@ -388,11 +427,11 @@
         <div class="bank">${cur.bank.map((b, k) => `<button class="tok mono ${cur.hl === k ? 'hl' : ''}" data-act="tok" data-k="${k}" ${cur.picked.includes(k) || cur.checked ? 'disabled' : ''}>${esc(b.x)}</button>`).join('')}</div>`;
     }
     const body = $('#lessonBody');
-    const typed = task.t === 'f' || task.t === 'w';
+    const typed = typedTask(cur);
     if (fresh || !typed) {
       body.innerHTML = h;
       if (fresh) body.scrollTop = 0;
-      body.classList.toggle('grow', task.t === 'w'); // the editor takes the free height
+      body.classList.toggle('grow', task.t === 'w' || task.t === 'r'); // the editor takes the free height
     }
     if (typed) renderEditor();
     // R13: the keyboard is docked under the Check footer for typed tasks until Check.
@@ -406,7 +445,7 @@
     $('#bar').firstElementChild.style.width = Math.round((100 * LS.done) / LS.total) + '%';
     if (fresh) {
       const sheet = $('#sheet'); sheet.hidden = true; sheet.className = 'sheet';
-      const btn = $('#checkBtn'); btn.className = 'btn'; btn.textContent = t('check');
+      const btn = $('#checkBtn'); btn.className = 'btn'; btn.textContent = t(task.t === 'k' ? 'gotIt' : 'check');
     }
     $('#checkBtn').disabled = !cur.checked && !canCheck();
   }
@@ -419,6 +458,7 @@
   }
   function canCheck() {
     const cur = LS.cur; if (!cur) return false;
+    if (cur.task.t === 'k') return true; // "Got it" is always enabled
     if (cur.task.t === 'm') return cur.sel !== null;
     if (cur.task.t === 'o') return cur.picked.length > 0;
     return String(answerValue()).trim().length > 0;
@@ -431,6 +471,14 @@
     if (cur.checked) {
       // A fast second tap must not skip the answer sheet.
       if (performance.now() - checkedAt < CHECK_GUARD_MS) return;
+      return nextTask();
+    }
+    if (cur.task.t === 'k') {
+      // L1/L4: a teach card only advances: no answer, no XP, no accuracy, never re-queued.
+      // A fast double tap on the previous "Continue" must not skip the card unread.
+      if (performance.now() - cur.shownAt < CHECK_GUARD_MS) return;
+      LS.done++;
+      LS.queue.shift();
       return nextTask();
     }
     if (!canCheck()) return;
@@ -531,6 +579,7 @@
 
   function hint() {
     if (!LS || LS.finished || !LS.cur || LS.cur.checked) return bubble(t(LS ? 'hintNone' : 'hello'));
+    if (LS.cur.task.t === 'k') return bubble(t('hintNone')); // L4: no hint on a teach card
     if (!S.settings.hints) return bubble(t('hintsOff'));
     const cur = LS.cur; const task = cur.task;
     if (task.t === 'm') {
@@ -544,7 +593,7 @@
       }
       return bubble(t('hintNone'));
     }
-    if (task.t === 'f' || task.t === 'w') {
+    if (task.t === 'f' || task.t === 'w' || task.t === 'r') {
       if (cur.hints >= 3) return bubble(t('hintNone'));
       cur.hints++;
       const ans = String(task.a[0]);
@@ -566,13 +615,13 @@
   /* ---------- Custom editor and keyboard (R13) ---------- */
   // No native input in lessons: the answer is cur.text with a caret cur.caret, edited only by #kbd
   // (or a hardware keyboard). The system keyboard never opens.
-  const typedTask = (cur) => !!cur && (cur.task.t === 'f' || cur.task.t === 'w');
+  const typedTask = (cur) => !!cur && (cur.task.t === 'f' || cur.task.t === 'w' || cur.task.t === 'r');
   function renderEditor() {
     const ed = $('#ans'); const cur = LS && LS.cur;
     if (!ed || !typedTask(cur)) return;
     const s = cur.text; const c = Math.max(0, Math.min(cur.caret, s.length)); cur.caret = c;
     const caret = cur.checked ? '' : '<i class="caret" aria-hidden="true"></i>';
-    const ph = !s && cur.task.t === 'w' && !cur.checked ? `<span class="ph" aria-hidden="true">${esc(t('typeCode'))}</span>` : '';
+    const ph = !s && cur.task.t !== 'f' && !cur.checked ? `<span class="ph" aria-hidden="true">${esc(t('typeCode'))}</span>` : '';
     // .eol keeps an empty last line (after a trailing newline) tall enough to show the caret.
     ed.innerHTML = `<span class="et">${esc(s.slice(0, c))}</span>${caret}<span class="et">${esc(s.slice(c))}</span>${ph}<span class="eol" aria-hidden="true">​</span>`;
     ed.setAttribute('aria-readonly', cur.checked ? 'true' : 'false');
@@ -821,9 +870,10 @@
     if (!el) { if (!e.target.closest('#bubble')) hideBubble(); return; }
     const act = el.dataset.act;
     switch (act) {
-      case 'tab': tab = el.dataset.tab; courseId = null; render(); resetScroll(); break;
-      case 'course': courseId = el.dataset.id; render(); resetScroll(); break;
-      case 'back': courseId = null; render(); resetScroll(); break;
+      case 'tab': tab = el.dataset.tab; courseId = null; guide = false; render(); resetScroll(); break;
+      case 'course': courseId = el.dataset.id; guide = false; render(); resetScroll(); break;
+      case 'back': if (guide) guide = false; else courseId = null; render(); resetScroll(); break; // Guide → course → courses
+      case 'guide': guide = true; render(); resetScroll(); break;
       case 'edtap': tapEditor(e); break;
       case 'lesson': startLesson(courseId, Number(el.dataset.i)); break;
       case 'mascot': if ($('#bubble').hidden) hint(); else { hideBubble(); if (LS) hint(); } break;
