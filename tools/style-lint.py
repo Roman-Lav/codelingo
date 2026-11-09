@@ -4,11 +4,12 @@
 Checks codelingo/style.css and the HTML templates in codelingo/app.js:
   color      hex/rgb colors outside :root/theme token blocks (use var(--token))
   font-size  sizes outside the type scale (TYPE_SCALE) — max(16px, var(--code-size)) etc. are fine
-  spacing    padding/margin/gap values not on the 4px grid
+  spacing    padding/margin/gap values not on the 8px grid (R10; 1/2/4px allowed for fine detail)
+  shadow     box-shadow other than var(--shadow) = 3px 3px 0 var(--line), or none (R10)
   radius     border-radius other than 0 (the 8-bit style uses square corners)
   important  !important
   inline     style="..." in templates other than dynamic widths (progress bars, fill input)
-  percent    "%" shown as text in templates (product decision: no percentages in the UI)
+  percent    "%" shown as text in templates; the only allowed one is the course percent (.kpct, R9)
 Usage: python3 tools/style-lint.py   (exit 1 if anything is found)
 """
 import re
@@ -55,8 +56,12 @@ def main():
                         problems.append(("font-size", where))
             if SPACING_PROPS.match(prop):
                 for px in re.findall(r"(?<![\w.-])(\d+(?:\.\d+)?)px", val):
-                    if float(px) % 4 and float(px) not in (1, 2, 6, 10):
+                    if float(px) % 8 and float(px) not in (1, 2, 4):
                         problems.append(("spacing", where))
+            if prop == "box-shadow" and val not in ("none", "var(--shadow)") and not val.startswith("inset"):
+                problems.append(("shadow", where))
+            if prop == "--shadow" and val != "3px 3px 0 var(--line)":
+                problems.append(("shadow", where))
             if prop == "border-radius" and val not in ("0", "0px", "50%"):
                 problems.append(("radius", where))
 
@@ -67,6 +72,8 @@ def main():
     for m in re.finditer(r"`[^`]*`", app, flags=re.S):
         tpl = m.group(0)
         for pm in re.finditer(r"\}%(?![\w;])|\d%<", tpl):
+            if 'class="kpct">' in tpl[max(0, pm.start() - 40): pm.start()]:
+                continue  # R9: the course percent on the course screen
             line = app[: m.start() + pm.start()].count("\n") + 1
             problems.append(("percent", f"app.js:{line} shows a percentage in the UI"))
 

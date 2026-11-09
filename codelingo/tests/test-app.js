@@ -7,7 +7,7 @@
   // Fresh app instance. `state` optionally pre-seeds localStorage; `lang` forces UI language.
   T.loadApp = async ({ state, lang = 'en' } = {}) => {
     localStorage.removeItem(KEY);
-    localStorage.setItem(KEY, JSON.stringify(state || { settings: { lang, sound: false } }));
+    localStorage.setItem(KEY, JSON.stringify(state || { settings: { lang, sound: false, music: false } }));
     if (frame) frame.remove();
     frame = document.createElement('iframe');
     document.body.appendChild(frame);
@@ -156,39 +156,247 @@
     assert(!app.$('#bubble').hidden, 'bubble shown');
   });
 
-  test('app: settings — language switch re-renders UI in Russian', async () => {
+  const cycle = (app, k) => app.$(`[data-act="cycle"][data-k="${k}"]`).click();
+
+  test('app: settings — language is one button that cycles en → ru → uk → cs → en', async () => {
     const app = await T.loadApp();
     app.$('.tab[data-tab="settings"]').click();
-    const sel = app.$('select[data-set="lang"]');
-    sel.value = 'ru'; sel.dispatchEvent(new app.win.Event('change', { bubbles: true }));
-    assert.eq(app.$('.tab[data-tab="learn"] span').textContent, window.I18N.ru.learn, 'tab label');
-    assert.eq(app.doc.documentElement.lang, 'ru', 'html lang');
-    assert.eq(app.stored().settings.lang, 'ru', 'persisted');
+    assert.eq(app.$$('[data-act="cycle"][data-k="lang"]').length, 1, 'one language button');
+    assert(!app.$('select'), 'no language select');
+    const names = { en: 'English', ru: 'Русский', uk: 'Українська', cs: 'Čeština' };
+    assert.eq(app.$('[data-k="lang"]').textContent.trim(), names.en, 'shows the current language');
+    for (const l of ['ru', 'uk', 'cs', 'en']) {
+      cycle(app, 'lang');
+      assert.eq(app.stored().settings.lang, l, 'persisted ' + l);
+      assert.eq(app.doc.documentElement.lang, l, 'html lang ' + l);
+      assert.eq(app.$('[data-k="lang"]').textContent.trim(), names[l], 'button label ' + l);
+      assert.eq(app.$('.tab[data-tab="learn"] span').textContent, window.I18N[l].learn, 'tab label ' + l);
+    }
   });
 
-  test('app: settings — dark theme and code size apply to the document', async () => {
+  test('app: settings — theme is one button that cycles Auto → Light → Dark → Auto', async () => {
     const app = await T.loadApp();
     app.$('.tab[data-tab="settings"]').click();
-    app.$('[data-k="theme"][data-v="dark"]').click();
-    assert.eq(app.doc.documentElement.dataset.theme, 'dark', 'data-theme');
-    app.$('[data-k="code"][data-v="l"]').click();
-    assert.eq(app.doc.documentElement.style.getPropertyValue('--code-size'), '18px', 'code size');
+    assert.eq(app.$$('[data-act="cycle"][data-k="theme"]').length, 1, 'one theme button');
+    assert.eq(app.$('[data-k="theme"]').textContent.trim(), window.I18N.en.system, 'starts at Auto');
+    const want = [['light', 'light', '#F7F4EF'], ['dark', 'dark', '#17110B'], ['system', undefined, null]];
+    for (const [v, attr, color] of want) {
+      cycle(app, 'theme');
+      assert.eq(app.stored().settings.theme, v, 'stored ' + v);
+      assert.eq(app.doc.documentElement.dataset.theme, attr, 'data-theme for ' + v);
+      assert.eq(app.$('[data-k="theme"]').textContent.trim(), window.I18N.en[v], 'label for ' + v);
+      if (color) assert.eq(app.$('meta[name="theme-color"]').getAttribute('content'), color, 'theme-color for ' + v);
+    }
   });
 
-  test('app: profile shows today/goal and a level row per course from stored progress', async () => {
-    const d = new Date(); const dk = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    const app = await T.loadApp({ state: { settings: { lang: 'en', goal: 20 }, prog: { js: { done: [0, 1], ans: 10, ok: 8, xp: 150 } }, days: { [dk]: 15 } } });
+  test('app: settings — no code size, daily goal, export or import; toggles sound/music/hints/animations', async () => {
+    const app = await T.loadApp();
+    app.$('.tab[data-tab="settings"]').click();
+    const c = T.collector();
+    ['[data-k="code"]', '[data-k="goal"]', '[data-act="export"]', '[data-act="import"]', '#importFile', '.seg', 'select'].forEach((sel) => c.check(!app.$(sel), 'unexpected ' + sel));
+    const txt = app.$('#screen').textContent;
+    c.check(!/code text size|daily goal|export|import|XP/i.test(txt), 'removed settings still mentioned: ' + txt.replace(/\s+/g, ' ').slice(0, 160));
+    c.check(app.$$('input[type=checkbox][data-set]').map((x) => x.dataset.set).join() === 'sound,music,hints,motion', 'toggles: ' + app.$$('input[data-set]').map((x) => x.dataset.set).join());
+    c.check(app.$('input[data-set="music"]').checked === false, 'music off as stored');
+    c.check(!!app.$('[data-act="reset"]'), 'reset button');
+    c.check(/\d+\.\d+\.\d+/.test(app.$('.about').textContent), 'version line');
+    c.check(app.doc.documentElement.style.getPropertyValue('--code-size') === '', 'no --code-size switching on <html>');
+    ['codeSize', 'goal', 'exportP', 'importP', 'imported', 'importErr', 'data', 'today', 'week', 'lvl'].forEach((k) => ['en', 'ru', 'uk', 'cs'].forEach((l) => c.check(window.I18N[l][k] === undefined, `i18n ${l}.${k} still present`)));
+    c.done();
+  });
+
+  test('app: music is on by default; the toggle stores it', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false } } });
+    assert.eq(app.stored() && app.win.__codelingo.sanitize({}).settings.music, true, 'default music on');
+    app.$('.tab[data-tab="settings"]').click();
+    const box = app.$('input[data-set="music"]'); assert(box.checked, 'music toggle checked by default');
+    box.checked = false; box.dispatchEvent(new app.win.Event('change', { bubbles: true }));
+    assert.eq(app.stored().settings.music, false, 'persisted off');
+  });
+
+  test('app: sanitize keeps only known settings and valid best accuracy', async () => {
+    const app = await T.loadApp();
+    const s = app.win.__codelingo.sanitize({
+      settings: { theme: 'neon', lang: 'ru', code: 'l', goal: 50, sound: 'yes', music: false, extra: 1 },
+      prog: { js: { done: [0], ans: 5, ok: 4, xp: 10, best: { 0: 87.6, 1: 150, 2: -5, 3: 'x', 9: '40', 10: 90, '-1': 50, '1.5': 60, abc: 70, 4: null, 5: true } } },
+    });
+    assert.eq(Object.keys(s.settings).sort().join(), 'hints,lang,motion,music,sound,theme', 'settings keys');
+    assert.eq(s.settings.theme, 'system', 'bad theme reset');
+    assert.eq(s.settings.lang, 'ru', 'lang kept');
+    assert.eq(s.settings.sound, true, 'non-boolean sound -> default');
+    assert.eq(s.settings.music, false, 'music kept');
+    assert.eq(JSON.stringify(s.prog.js.best), JSON.stringify({ 0: 88, 1: 100, 2: 0, 9: 40 }), 'best sanitized');
+    assert.eq(JSON.stringify(app.win.__codelingo.sanitize({ prog: { js: { best: [1, 2] } } }).prog.js.best), '{}', 'array best dropped');
+  });
+
+  test('app: finishing a lesson stores best accuracy = max(old, new)', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false }, prog: { js: { done: [], ans: 0, ok: 0, xp: 0, best: { 0: 95 } } } } });
+    await openLesson(app, 'js', 0);
+    const n = lessonCtx.tasks.length;
+    assert(!answer(app, false), 'wrong'); await cont(app);
+    for (let i = 0; i < n; i++) { answer(app, true); await cont(app); }
+    assert(app.$('.finish'), 'finished');
+    assert.eq(app.stored().prog.js.best[0], 95, 'lower accuracy keeps the old best');
+    app.$('#checkBtn').click();
+    // second run with a fresh best
+    const app2 = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false }, prog: { js: { done: [], ans: 0, ok: 0, xp: 0, best: { 0: 10 } } } } });
+    await openLesson(app2, 'js', 0);
+    assert(!answer(app2, false), 'wrong'); await cont(app2);
+    for (let i = 0; i < n; i++) { answer(app2, true); await cont(app2); }
+    assert.eq(app2.stored().prog.js.best[0], Math.round((100 * n) / (n + 1)), 'best = round(100*ok/ans)');
+  });
+
+  test('app: fill-blank check treats "$" in the input literally ($$ bug)', async () => {
+    const app = await T.loadApp();
+    const { isCorrect, correctText } = app.win.__codelingo;
+    const task = { t: 'f', c: 'const s = `${___}`;', a: ['name'] };
+    assert(isCorrect(task, 'js', 'name'), 'right answer accepted');
+    const tpl = { t: 'f', c: 'x = ___;', a: ['"${"'] };
+    assert(isCorrect(tpl, 'js', '"${"'), 'literal ${ accepted');
+    assert(!isCorrect(tpl, 'js', '"$${"'), '"$${" must not equal "${"');
+    assert(!isCorrect({ t: 'f', c: 'a ___ b', a: ['x'] }, 'js', '$&'), '"$&" must not insert the match');
+    assert.eq(correctText({ t: 'f', c: 'v = ___', a: ['$$'] }), 'v = $$', 'correctText keeps $$');
+  });
+
+  test('app: plain-word options render in the system font, code options in mono (R9)', async () => {
+    const app = await T.loadApp();
+    const { optText } = app.win.__codelingo;
+    assert.eq(optText('HyperText Markup Language').code, false, 'prose');
+    assert.eq(optText('<p>').code, true, 'tag');
+    assert.eq(optText('font size').code, false, 'two words');
+    assert.eq(optText('a = b').code, true, 'has =');
+    assert.eq(optText('color').code, true, 'one word without space stays code');
+    assert.eq(optText('print("hi")').code, true, 'call');
+    await openLesson(app, 'html', 0);
+    const opt = app.$$('.opt').find((o) => o.textContent === 'HyperText Markup Language');
+    assert(opt, 'HTML first task shows the option');
+    assert(!opt.classList.contains('mono'), 'no mono class');
+    assert(!/mono|Menlo/i.test(app.win.getComputedStyle(opt).fontFamily), 'system font: ' + app.win.getComputedStyle(opt).fontFamily);
+  });
+
+  test('app: learn screen — no subtitle, 6 cards, check only on a fully passed course', async () => {
+    const full = window.COURSES.find((c) => c.id === 'css');
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false }, prog: { css: { done: full.lessons.map((_, i) => i), ans: 10, ok: 10, xp: 0 }, js: { done: [0, 1, 2], ans: 3, ok: 3, xp: 0 } } } });
+    assert(!app.$('.sub'), 'no subtitle');
+    assert.eq(app.$$('#screen > *').length, 2, 'only header and grid');
+    assert.eq(app.$$('.course').length, 6, 'cards');
+    assert.eq(app.$$('.course .cdone').length, 1, 'one done mark');
+    assert(app.$('.course[data-id="css"] .cdone'), 'on the CSS card');
+    assert(/Completed/.test(app.$('.course[data-id="css"]').getAttribute('aria-label')), 'done mark announced');
+  });
+
+  test('app: course screen shows k% styled exactly like the course name; lesson statuses', async () => {
+    // k = round(100 * 2/10 * (0.5 + 0.5 * 0.8)) = 18
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false }, prog: { js: { done: [0, 1], ans: 10, ok: 8, xp: 0 } } } });
+    app.$('.course[data-id="js"]').click();
+    const head = app.$('.course-head'); assert(head, 'course header');
+    assert(head.querySelector('.badge'), 'tag');
+    const name = head.querySelector('h1'); const pct = head.querySelector('.kpct');
+    assert.eq(name.textContent, 'JavaScript', 'name');
+    assert.eq(pct.textContent, '18%', 'percent = knowledge()');
+    const a = app.win.getComputedStyle(name), b = app.win.getComputedStyle(pct);
+    ['fontSize', 'fontWeight', 'color', 'fontFamily'].forEach((k) => assert.eq(b[k], a[k], 'percent ' + k));
+    const items = app.$$('.lesson-item');
+    assert(items[0].querySelector('.st svg') && items[1].querySelector('.st svg'), 'done = pixel check');
+    assert.eq(items[2].querySelector('.go').textContent, 'Start', 'next = Start');
+    assert(items[3].disabled && items[3].querySelector('.st svg'), 'locked = lock');
+    assert(!items.some((el) => /\d/.test(el.textContent)), 'no lesson numbers');
+    const hs = new Set(items.map((el) => Math.round(el.getBoundingClientRect().height)));
+    assert.eq(hs.size, 1, 'equal row heights: ' + [...hs].join(','));
+    const fresh = await T.loadApp(); fresh.$('.course[data-id="py"]').click();
+    assert.eq(fresh.$('.kpct').textContent, '0%', 'untouched course 0%');
+  });
+
+  test('app: profile — 7-day strip without label, one 10-segment bar per course, no numbers', async () => {
+    const dk = (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false }, prog: { js: { done: [0, 1, 2, 3], ans: 10, ok: 5, xp: 150, best: { 0: 100, 1: 90, 2: 89, 3: 59, 4: 100 } } }, days: { [dk]: 15 } } });
     app.$('.tab[data-tab="profile"]').click();
-    const goal = app.$('.today .goal'); assert(goal, 'today card');
-    assert.eq(goal.textContent.trim(), '15/20 XP', 'today XP / goal');
-    assert.eq(app.$$('.krow').length, 6, 'one level row per course');
-    const js = app.$('.krow[data-id="js"]'); assert(js, 'JS row');
-    // k = round(100 * 2/10 * (0.5 + 0.5 * 0.8)) = 18 -> "Novice"; the number itself is not shown.
-    assert.eq(js.querySelector('.lvl').textContent, window.I18N.en.lvl[1], 'JS level word');
-    assert.eq(js.querySelector('.bar i').style.width, '18%', 'JS bar width = k');
-    assert.eq(app.$('.krow[data-id="py"] .lvl').textContent, window.I18N.en.lvl[0], 'untouched course: Not started');
-    assert(!app.$('.stats3'), 'no totals block');
-    assert(!/\d\s*%/.test(app.$('#screen').textContent), 'no percentages in profile text');
+    const c = T.collector();
+    c.check(!app.$('.today') && !app.$('.goal'), 'no today/goal block');
+    c.check(!/Last 7 days|Today|XP|Knowledge/i.test(app.$('#screen').textContent), 'removed labels present');
+    c.check(app.$$('.week i').length === 7 && app.$$('.week i.on').length === 1, '7-day strip with today on');
+    c.check(app.$$('.krow').length === 6, 'one row per course');
+    app.$$('.krow').forEach((r) => c.check(r.querySelectorAll('.segbar i').length === 10, r.dataset.id + ': 10 segments'));
+    const segs = app.$$('.krow[data-id="js"] .segbar i').map((i) => i.className);
+    c.check(segs.join() === 'ok,ok,mid,bad,,,,,,', 'js segments: ' + segs.join());
+    const ws = new Set(app.$$('.krow[data-id="js"] .segbar i').map((i) => Math.round(i.getBoundingClientRect().width)));
+    c.check(ws.size === 1, 'equal segment widths: ' + [...ws].join());
+    c.check(!/\d/.test(app.$('#screen').textContent), 'digits in profile');
+    c.check(!app.$('.lvl'), 'no level words');
+    const rows = app.$$('.krow').map((r) => r.getBoundingClientRect());
+    for (let i = 1; i < rows.length; i++) c.check(Math.round(rows[i].top - rows[i - 1].bottom) === 24, `row gap ${rows[i].top - rows[i - 1].bottom}`);
+    app.$$('#screen *').forEach((el) => { const cs = app.win.getComputedStyle(el); if (cs.borderBottomStyle === 'dotted' || cs.borderTopStyle === 'dotted') c.check(false, 'dotted rule on ' + el.className); });
+    const ok = app.win.getComputedStyle(app.$('.segbar i.ok')).backgroundColor, mid = app.win.getComputedStyle(app.$('.segbar i.mid')).backgroundColor;
+    c.check(ok !== mid && mid !== 'rgba(0, 0, 0, 0)', 'mid colour set: ' + mid);
+    c.done();
+  });
+
+  // Music (R11): a fake AudioContext records what the app does with it.
+  function fakeAudio(win) {
+    const log = { ctx: 0, osc: [], resumed: 0 };
+    const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} });
+    const node = () => ({ connect() {}, disconnect() {} });
+    class FakeCtx {
+      constructor() { log.ctx++; this.state = 'running'; this.destination = node(); this.t0 = performance.now(); }
+      get currentTime() { return (performance.now() - this.t0) / 1000; }
+      resume() { log.resumed++; return Promise.resolve(); }
+      suspend() { return Promise.resolve(); }
+      createGain() { const g = node(); g.gain = param(); log.lastGain = g; return g; }
+      createOscillator() { const o = node(); o.frequency = { ...param(), setValueAtTime: (f) => log.osc.push(f) }; o.start = () => {}; o.stop = () => {}; return o; }
+    }
+    win.AudioContext = FakeCtx; win.webkitAudioContext = undefined;
+    return log;
+  }
+  const setHidden = (app, hidden) => {
+    Object.defineProperty(app.doc, 'visibilityState', { configurable: true, get: () => (hidden ? 'hidden' : 'visible') });
+    app.doc.dispatchEvent(new app.win.Event('visibilitychange'));
+  };
+
+  test('app: music starts with a lesson, stops on exit, finish and hidden; resumes only in a lesson', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: true } } });
+    const log = fakeAudio(app.win); const M = app.win.CLMusic;
+    assert(!M.playing, 'silent on the home screen');
+    await openLesson(app, 'js', 0);
+    assert(M.playing, 'playing after lesson start');
+    await T.sleep(120);
+    assert(log.osc.length > 0, 'notes scheduled');
+    assert(log.osc.every((f) => f <= 1000), 'no notes above 1 kHz: ' + Math.max(...log.osc));
+    assert(M.GAIN <= 0.03 && M.BPM === 100 && M.BARS >= 8 && M.BARS <= 16, 'gain/bpm/bars');
+    setHidden(app, true); assert(!M.playing, 'stops when hidden');
+    const n = log.osc.length; await T.sleep(100); assert.eq(log.osc.length, n, 'no notes while hidden');
+    setHidden(app, false); assert(M.playing, 'resumes when visible in a lesson');
+    app.$('[data-act="quit"]').click(); // no answers yet: no confirm
+    assert(app.$('#lesson').hidden && !M.playing, 'stops on exit');
+    setHidden(app, true); setHidden(app, false);
+    assert(!M.playing, 'does not resume outside a lesson');
+    // finish screen
+    app.$('.back').click();
+    await openLesson(app, 'js', 0);
+    for (let i = 0; i < lessonCtx.tasks.length; i++) { answer(app, true); await cont(app); }
+    assert(app.$('.finish'), 'finish');
+    assert(!M.playing, 'stops on the finish screen');
+    setHidden(app, true); setHidden(app, false);
+    assert(!M.playing, 'does not resume on the finish screen');
+  });
+
+  test('app: music respects the setting and never throws without AudioContext', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false } } });
+    const log = fakeAudio(app.win);
+    await openLesson(app, 'js', 0);
+    assert(!app.win.CLMusic.playing && log.ctx === 0, 'music off: nothing created');
+    app.$('[data-act="quit"]').click();
+    const app2 = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: true } } });
+    const errs = []; app2.win.addEventListener('error', (e) => errs.push(String(e.message)));
+    app2.win.AudioContext = undefined; app2.win.webkitAudioContext = undefined;
+    await openLesson(app2, 'js', 0);
+    assert(!app2.win.CLMusic.playing, 'not playing without AudioContext');
+    setHidden(app2, true); setHidden(app2, false);
+    app2.$('[data-act="quit"]').click();
+    app2.win.AudioContext = function () { throw new Error('blocked'); };
+    app2.$('.back').click();
+    await openLesson(app2, 'js', 0);
+    assert(!app2.win.CLMusic.playing, 'not playing when the constructor throws');
+    assert.eq(errs.length, 0, 'errors: ' + errs.join('; '));
   });
 
   test('app: corrupted localStorage does not crash the app', async () => {
@@ -210,66 +418,8 @@
     const app = await T.loadApp({ state: { settings: 'oops', prog: { js: {}, py: { done: 'x', ans: '3', ok: null }, css: null }, days: [] } });
     assert.eq(app.$$('.course').length, 6, 'home renders');
     app.$('.tab[data-tab="profile"]').click();
-    assert(app.$('.today .goal') && app.$$('.krow .lvl').length === 6, 'profile renders today card and level rows');
+    assert(app.$$('.krow .segbar').length === 6, 'profile renders a bar per course');
     assert(!/NaN|undefined/.test(app.$('#screen').textContent), 'no NaN/undefined in profile');
-  });
-
-  // Export: stub navigator.share/canShare and <a>.click inside the app frame.
-  function stubExport(app, { share, canShare } = {}) {
-    const nav = app.win.navigator; const calls = { share: [], download: [] };
-    Object.defineProperty(nav, 'share', { configurable: true, value: share ? (d) => { calls.share.push(d); return share(d); } : undefined });
-    Object.defineProperty(nav, 'canShare', { configurable: true, value: canShare });
-    app.win.HTMLAnchorElement.prototype.click = function () { calls.download.push(this.download); };
-    return calls;
-  }
-  async function clickExport(app) {
-    app.$('.tab[data-tab="settings"]').click();
-    const btn = app.$('[data-act="export"]'); assert(btn, 'export button');
-    btn.click();
-    await T.sleep(30);
-  }
-  const EXPORT_NAME = /^codelingo-\d{4}-\d{2}-\d{2}\.json$/;
-
-  test('app: export shares a single .json file when canShare is true', async () => {
-    const app = await T.loadApp();
-    const calls = stubExport(app, { share: () => Promise.resolve(), canShare: (d) => !!(d && d.files && d.files.length) });
-    await clickExport(app);
-    assert.eq(calls.share.length, 1, 'navigator.share calls');
-    const files = calls.share[0].files;
-    assert(Array.isArray(files) && files.length === 1, 'exactly one file');
-    assert(files[0] instanceof app.win.File, 'is a File');
-    assert(EXPORT_NAME.test(files[0].name), 'file name: ' + files[0].name);
-    assert.eq(files[0].type, 'application/json', 'mime');
-    const data = JSON.parse(await files[0].text());
-    assert(data && data.settings, 'file contains progress');
-    assert.eq(calls.download.length, 0, 'no download fallback');
-  });
-
-  test('app: export without navigator.share falls back to <a download>', async () => {
-    const app = await T.loadApp();
-    const errs = [];
-    app.win.addEventListener('unhandledrejection', (e) => errs.push(String(e.reason)));
-    app.win.addEventListener('error', (e) => errs.push(String(e.message)));
-    const calls = stubExport(app, {});
-    await clickExport(app);
-    assert.eq(errs.length, 0, 'errors: ' + errs.join('; '));
-    assert.eq(calls.download.length, 1, 'download fallback used');
-    assert(EXPORT_NAME.test(calls.download[0]), 'download name: ' + calls.download[0]);
-  });
-
-  test('app: export — cancel (AbortError) does nothing, other share errors fall back', async () => {
-    const app = await T.loadApp();
-    let calls = stubExport(app, { share: () => Promise.reject(new app.win.DOMException('cancel', 'AbortError')), canShare: () => true });
-    await clickExport(app);
-    assert.eq(calls.share.length, 1, 'share attempted');
-    assert.eq(calls.download.length, 0, 'no fallback after cancel');
-    calls = stubExport(app, { share: () => Promise.reject(new app.win.DOMException('nope', 'NotAllowedError')), canShare: () => true });
-    await clickExport(app);
-    assert.eq(calls.download.length, 1, 'fallback after share error');
-    calls = stubExport(app, { share: () => Promise.resolve(), canShare: () => false });
-    await clickExport(app);
-    assert.eq(calls.share.length, 0, 'no share when canShare is false');
-    assert.eq(calls.download.length, 1, 'fallback when canShare is false');
   });
 
   // Symbol bar: synthetic touch events with touches/changedTouches defined explicitly.
@@ -333,29 +483,7 @@
     assert(!uniq.length, uniq.length + ' small targets:\n    - ' + uniq.slice(0, 15).join('\n    - '));
   });
 
-  // --- Edge cases: export double-tap, touch without touchstart, multitouch ---
-  test('app: double-tap Export while share sheet is open — no unhandled errors, no extra download', async () => {
-    const app = await T.loadApp();
-    const errs = [];
-    app.win.addEventListener('unhandledrejection', (e) => errs.push(String(e.reason)));
-    app.win.addEventListener('error', (e) => errs.push(String(e.message)));
-    // Real browsers reject a second share() while the first is pending with InvalidStateError.
-    let pending = false;
-    const calls = stubExport(app, {
-      canShare: () => true,
-      share: () => {
-        if (pending) return Promise.reject(new app.win.DOMException('An earlier share has not yet completed.', 'InvalidStateError'));
-        pending = true; return new Promise(() => {});
-      },
-    });
-    app.$('.tab[data-tab="settings"]').click();
-    const btn = app.$('[data-act="export"]');
-    btn.click(); btn.click();
-    await T.sleep(50);
-    assert.eq(errs.length, 0, 'errors: ' + errs.join('; '));
-    assert.eq(calls.download.length, 0, 'second tap must not trigger <a download> while share sheet is open (got ' + calls.download.length + ')');
-  });
-
+  // --- Edge cases: touch without touchstart, multitouch ---
   function touchMulti(app, el, type, touches, changed) {
     const ev = new app.win.Event(type, { bubbles: true, cancelable: true });
     Object.defineProperty(ev, 'touches', { value: touches });

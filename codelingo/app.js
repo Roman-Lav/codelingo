@@ -1,10 +1,12 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.5';
+  const VERSION = '1.0.6';
   const KEY = 'codelingo.v1';
   const LANGS = ['en', 'ru', 'uk', 'cs'];
   const LANG_NAMES = { en: 'English', ru: 'Русский', uk: 'Українська', cs: 'Čeština' };
+  const THEMES = ['system', 'light', 'dark'];
+  const TOGGLES = ['sound', 'music', 'hints', 'motion'];
   const COURSES = window.COURSES || [];
 
   const $ = (s, r = document) => r.querySelector(s);
@@ -19,7 +21,7 @@
     return LANGS.includes(l) ? l : 'en';
   }
   const defaults = () => ({
-    settings: { theme: 'system', lang: detectLang(), sound: true, hints: true, motion: true, code: 'm', goal: 30 },
+    settings: { theme: 'system', lang: detectLang(), sound: true, music: true, hints: true, motion: true },
     prog: {}, days: {},
   });
   let S;
@@ -35,9 +37,12 @@
   function sanitize(raw) {
     const d = defaults();
     if (!isObj(raw)) return d;
-    const s = Object.assign(d.settings, isObj(raw.settings) ? raw.settings : {});
-    if (!LANGS.includes(s.lang)) s.lang = detectLang();
-    if (![10, 20, 30, 50].includes(Number(s.goal))) s.goal = 30; else s.goal = Number(s.goal);
+    // Only known settings survive; old keys (code size, daily goal) are dropped.
+    const rs = isObj(raw.settings) ? raw.settings : {};
+    const s = d.settings;
+    if (THEMES.includes(rs.theme)) s.theme = rs.theme;
+    if (LANGS.includes(rs.lang)) s.lang = rs.lang;
+    TOGGLES.forEach((k) => { if (typeof rs[k] === 'boolean') s[k] = rs[k]; });
     const prog = {};
     if (isObj(raw.prog)) {
       Object.keys(raw.prog).forEach((id) => {
@@ -46,7 +51,16 @@
         const max = c ? c.lessons.length : 0;
         const done = Array.isArray(p.done) ? [...new Set(p.done.filter((i) => Number.isInteger(i) && i >= 0 && i < max))] : [];
         const ans = num(p.ans);
-        prog[id] = { done, ans, ok: Math.min(num(p.ok), ans), xp: num(p.xp) };
+        // best[lesson] = best accuracy 0..100 of a finished lesson
+        const best = {};
+        if (isObj(p.best)) {
+          Object.keys(p.best).forEach((k) => {
+            const i = Number(k); const v = Number(p.best[k]);
+            const okType = typeof p.best[k] === 'number' || (typeof p.best[k] === 'string' && p.best[k].trim() !== '');
+            if (/^\d+$/.test(k) && i < max && okType && Number.isFinite(v)) best[i] = Math.min(100, Math.max(0, Math.round(v)));
+          });
+        }
+        prog[id] = { done, ans, ok: Math.min(num(p.ok), ans), xp: num(p.xp), best };
       });
     }
     const days = {};
@@ -54,11 +68,17 @@
     return { settings: s, prog, days };
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* ignore */ } }
-  function prog(id) { return S.prog[id] || (S.prog[id] = { done: [], ans: 0, ok: 0, xp: 0 }); }
+  function prog(id) { return S.prog[id] || (S.prog[id] = { done: [], ans: 0, ok: 0, xp: 0, best: {} }); }
 
   const t = (k) => { const d = window.I18N[S.settings.lang] || window.I18N.en; return d[k] !== undefined ? d[k] : (window.I18N.en[k] !== undefined ? window.I18N.en[k] : k); };
   const tr = (s) => { if (s == null) return ''; const p = String(s).split('§'); return p[LANGS.indexOf(S.settings.lang)] || p[0]; };
-  const optText = (o) => (o[0] === '~' ? { text: tr(o.slice(1)), code: false } : { text: o, code: true });
+  // R9: an option is shown as code unless it is translated text ("~") or plain words
+  // (has a space and no code characters), e.g. "HyperText Markup Language".
+  const CODE_CHARS = /[<>{}()[\];=."'`$#*|&!:/_]/;
+  const optText = (o) => {
+    if (o[0] === '~') return { text: tr(o.slice(1)), code: false };
+    return { text: o, code: !(o.includes(' ') && !CODE_CHARS.test(o)) };
+  };
 
   /* ---------- Pixel graphics ---------- */
   const MASCOT = [
@@ -104,6 +124,7 @@
   const mascotSVG = (cls = '') => `<svg class="mascot ${cls}" viewBox="0 0 14 10" shape-rendering="crispEdges" aria-hidden="true">${gridRects(MASCOT, (c) => (c === 'E' ? 'me' : 'mb'))}</svg>`;
 
   /* ---------- Sound ---------- */
+  const music = window.CLMusic || { start() { return false; }, stop() {}, playing: false };
   let ac = null;
   const SND = {
     ok: [[660, 0.08, 0], [990, 0.12, 0.08]],
@@ -151,8 +172,9 @@
     if (task.t === 'm') return input === task.a;
     if (task.t === 'f') {
       if (!String(input).trim()) return false;
-      const got = norm(task.c.replace('___', input), lang);
-      return task.a.some((a) => norm(task.c.replace('___', a), lang) === got);
+      // Function replacers: "$$", "$&" etc. in the answer must stay literal.
+      const got = norm(task.c.replace('___', () => input), lang);
+      return task.a.some((a) => norm(task.c.replace('___', () => a), lang) === got);
     }
     if (task.t === 'w') { const got = norm(input, lang); return got !== '' && task.a.some((a) => norm(a, lang) === got); }
     if (task.t === 'o') return norm(input.join(' '), lang) === norm(task.a.join(' '), lang);
@@ -165,14 +187,12 @@
     const acc = p.ans ? p.ok / p.ans : 0;
     return Math.round(100 * (p.done.length / c.lessons.length) * (0.5 + 0.5 * acc));
   }
-  function lvlName(k) { const l = t('lvl'); return k === 0 ? l[0] : k < 25 ? l[1] : k < 50 ? l[2] : k < 75 ? l[3] : k < 100 ? l[4] : l[5]; }
 
   /* ---------- Settings application ---------- */
   function applySettings() {
     const r = document.documentElement;
     if (S.settings.theme === 'system') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', S.settings.theme);
     r.setAttribute('data-motion', S.settings.motion ? 'on' : 'off');
-    r.style.setProperty('--code-size', { s: '13px', m: '15px', l: '18px' }[S.settings.code] || '15px');
     r.lang = S.settings.lang;
     const dark = S.settings.theme === 'dark' || (S.settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     const meta = $('meta[name="theme-color"]');
@@ -190,12 +210,16 @@
     </header>`;
   }
 
+  const allDone = (c) => prog(c.id).done.length >= c.lessons.length;
+
   function viewLearn() {
-    return header('CodeLingo') + `<p class="sub">${esc(t('chooseLang'))}</p><div class="grid">` +
+    return header('CodeLingo') + '<div class="grid">' +
       COURSES.map((c) => {
-        return `<button class="card course" data-act="course" data-id="${c.id}">
+        const done = allDone(c);
+        return `<button class="card course" data-act="course" data-id="${c.id}" aria-label="${esc(c.name + (done ? ', ' + t('completed') : ''))}">
           <span class="badge">${esc(c.tag)}</span>
           <span class="cname">${esc(c.name)}</span>
+          ${done ? pix('check', 'ic ok cdone') : ''}
         </button>`;
       }).join('') + '</div>';
   }
@@ -203,61 +227,54 @@
   function viewCourse(id) {
     const c = COURSES.find((x) => x.id === id);
     const p = prog(id);
-    return header('', true) + `<div class="course-head"><span class="badge">${esc(c.tag)}</span><h1>${esc(c.name)}</h1></div>
+    // R9: the course percent is the only number in the UI; it looks exactly like the course name.
+    return header('', true) + `<div class="course-head"><span class="badge">${esc(c.tag)}</span><h1>${esc(c.name)}</h1><span class="kpct">${knowledge(c)}%</span></div>
       <div class="list">` + c.lessons.map((L, i) => {
         const done = p.done.includes(i);
         const open = done || i === 0 || p.done.includes(i - 1);
+        const st = done ? pix('check', 'ic ok') : open ? `<span class="go">${esc(t('start'))}</span>` : pix('lock', 'ic');
         return `<button class="card lesson-item ${done ? 'done' : ''} ${open ? '' : 'locked'}" ${open ? `data-act="lesson" data-i="${i}"` : 'disabled'}>
-          <span class="num">${i + 1}</span>
           <span class="lt">${esc(tr(L.title))}</span>
-          <span class="st">${done ? pix('check', 'ic ok') : open ? esc(t('start')) : pix('lock', 'ic')}</span>
+          <span class="st">${st}</span>
         </button>`;
       }).join('') + '</div>';
   }
 
+  // Colour of a passed lesson by its best accuracy. Lessons passed before best was stored
+  // fall back to the course accuracy.
+  function segClass(p, i) {
+    if (!p.done.includes(i)) return '';
+    const acc = p.best[i] !== undefined ? p.best[i] : p.ans ? Math.round((100 * p.ok) / p.ans) : 0;
+    return acc >= 90 ? 'ok' : acc >= 60 ? 'mid' : 'bad';
+  }
+
   function viewProfile() {
-    const todayXp = S.days[dayKey()] || 0;
-    const goal = S.settings.goal;
     const week = [];
     for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); week.push({ on: (S.days[dayKey(d)] || 0) > 0, label: d.toLocaleDateString(S.settings.lang, { weekday: 'short' }).slice(0, 2) }); }
     return header(t('profile')) + `
-      <div class="card today">
-        <div class="row"><b>${esc(t('today'))}</b><span class="goal">${todayXp}/${goal} XP</span></div>
-        <div class="bar big"><i style="width:${Math.min(100, (100 * todayXp) / goal)}%;"></i></div>
-        <div class="small">${esc(t('week'))}</div>
-        <div class="week">${week.map((w) => `<span><i class="${w.on ? 'on' : ''}"></i>${esc(w.label)}</span>`).join('')}</div>
-      </div>
-      <h2 class="h2">${esc(t('knowledge'))}</h2>` +
+      <div class="week">${week.map((w) => `<span><i class="${w.on ? 'on' : ''}"></i>${esc(w.label)}</span>`).join('')}</div>
+      <div class="klist">` +
       COURSES.map((c) => {
-        const k = knowledge(c);
+        const p = prog(c.id);
+        const aria = t('segAria').replace('{n}', p.done.length).replace('{m}', c.lessons.length);
         return `<div class="krow" data-id="${c.id}">
-          <div class="row"><b>${esc(c.name)}</b><span class="lvl">${esc(lvlName(k))}</span></div>
-          <div class="bar" aria-hidden="true"><i style="width:${k}%;"></i></div>
+          <b>${esc(c.name)}</b>
+          <div class="segbar" role="img" aria-label="${esc(aria)}">${c.lessons.map((_, i) => `<i class="${segClass(p, i)}"></i>`).join('')}</div>
         </div>`;
-      }).join('');
+      }).join('') + '</div>';
   }
 
-  function seg(key, opts) {
-    return `<div class="seg">${opts.map(([v, l]) => `<button class="${String(S.settings[key]) === String(v) ? 'on' : ''}" data-act="set" data-k="${key}" data-v="${v}">${esc(l)}</button>`).join('')}</div>`;
-  }
-  const toggle = (key) => `<label class="sw"><input type="checkbox" data-set="${key}" ${S.settings[key] ? 'checked' : ''}><i></i></label>`;
+  const toggle = (key) => `<label class="sw"><input type="checkbox" data-set="${key}" aria-label="${esc(t(TOGGLE_LABEL[key]))}" ${S.settings[key] ? 'checked' : ''}><i></i></label>`;
+  const TOGGLE_LABEL = { sound: 'sound', music: 'music', hints: 'mascotHints', motion: 'animations' };
 
   function viewSettings() {
+    const themeName = t(S.settings.theme);
+    const langName = LANG_NAMES[S.settings.lang];
     return header(t('settings')) + `
-      <div class="set col"><span>${esc(t('theme'))}</span>${seg('theme', [['system', t('system')], ['light', t('light')], ['dark', t('dark')]])}</div>
-      <div class="set"><span>${esc(t('language'))}</span>
-        <select data-set="lang">${LANGS.map((l) => `<option value="${l}" ${S.settings.lang === l ? 'selected' : ''}>${LANG_NAMES[l]}</option>`).join('')}</select></div>
-      <div class="set"><span>${esc(t('sound'))}</span>${toggle('sound')}</div>
-      <div class="set"><span>${esc(t('mascotHints'))}</span>${toggle('hints')}</div>
-      <div class="set"><span>${esc(t('animations'))}</span>${toggle('motion')}</div>
-      <div class="set col"><span>${esc(t('codeSize'))}</span>${seg('code', [['s', 'S'], ['m', 'M'], ['l', 'L']])}</div>
-      <div class="set col"><span>${esc(t('goal'))}</span>${seg('goal', [[10, '10 XP'], [20, '20 XP'], [30, '30 XP'], [50, '50 XP']])}</div>
-      <h2 class="h2">${esc(t('data'))}</h2>
-      <div class="stack">
-        <button class="btn ghost" data-act="export">${esc(t('exportP'))}</button>
-        <button class="btn ghost" data-act="import">${esc(t('importP'))}</button>
-        <button class="btn danger" data-act="reset">${esc(t('reset'))}</button>
-      </div>
+      <div class="set"><span>${esc(t('theme'))}</span><button class="btn ghost val" data-act="cycle" data-k="theme" aria-label="${esc(t('theme') + ': ' + themeName)}">${esc(themeName)}</button></div>
+      <div class="set"><span>${esc(t('language'))}</span><button class="btn ghost val" data-act="cycle" data-k="lang" lang="${S.settings.lang}" aria-label="${esc(t('language') + ': ' + langName)}">${esc(langName)}</button></div>
+      ${TOGGLES.map((k) => `<div class="set"><span>${esc(t(TOGGLE_LABEL[k]))}</span>${toggle(k)}</div>`).join('')}
+      <div class="stack"><button class="btn danger" data-act="reset">${esc(t('reset'))}</button></div>
       <p class="about">CodeLingo · ${esc(t('version'))} ${VERSION}<br>${esc(t('offline'))}</p>`;
   }
 
@@ -268,6 +285,7 @@
 
   function render() {
     const scr = $('#screen');
+    scr.dataset.view = tab === 'learn' ? (courseId ? 'course' : 'learn') : tab;
     if (tab === 'learn') scr.innerHTML = courseId ? viewCourse(courseId) : viewLearn();
     else if (tab === 'profile') scr.innerHTML = viewProfile();
     else scr.innerHTML = viewSettings();
@@ -285,6 +303,7 @@
     document.body.classList.add('in-lesson');
     $('#lesson').hidden = false;
     fitViewport();
+    if (S.settings.music) music.start(); // started by the tap on the lesson (iOS needs a gesture)
     nextTask();
   }
 
@@ -365,7 +384,7 @@
 
   function correctText(task) {
     if (task.t === 'm') return optText(task.o[task.a]).text;
-    if (task.t === 'f') return task.c.replace('___', task.a[0]);
+    if (task.t === 'f') return task.c.replace('___', () => task.a[0]);
     if (task.t === 'w') return task.a[0];
     return task.a.join(' ');
   }
@@ -429,8 +448,11 @@
 
   function finishLesson() {
     LS.finished = true;
+    music.stop();
     const p = prog(LS.c.id);
     if (!p.done.includes(LS.li)) p.done.push(LS.li);
+    const acc = LS.ans ? Math.round((100 * LS.ok) / LS.ans) : 0;
+    p.best[LS.li] = Math.max(p.best[LS.li] || 0, acc);
     p.xp += LS.xp;
     S.days[dayKey()] = (S.days[dayKey()] || 0) + LS.xp;
     save();
@@ -445,6 +467,7 @@
   function exitLesson(force) {
     if (!force && LS && !LS.finished && LS.ans > 0 && !window.confirm(t('quitQ'))) return;
     LS = null;
+    music.stop();
     hideBubble();
     $('#lesson').hidden = true;
     document.body.classList.remove('in-lesson');
@@ -520,34 +543,6 @@
     el.style.transform = `translateY(${vv.offsetTop}px)`;
   }
 
-  // iOS home-screen apps ignore <a download> with blob URLs: prefer the Web Share sheet with a File.
-  function downloadFallback(blob, name) {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = name;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  }
-  let exporting = false; // share sheet is open: ignore repeated taps on Export
-  async function exportProgress() {
-    if (exporting) return;
-    exporting = true;
-    try { await doExport(); } finally { exporting = false; }
-  }
-  async function doExport() {
-    const name = `codelingo-${dayKey()}.json`;
-    const json = JSON.stringify(S, null, 2);
-    let file = null;
-    try { file = new File([json], name, { type: 'application/json' }); } catch (_) { file = null; }
-    if (file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file] }); return; }
-      catch (err) {
-        // AbortError: user cancelled. InvalidStateError: another share is still open.
-        if (err && (err.name === 'AbortError' || err.name === 'InvalidStateError')) return;
-      }
-    }
-    downloadFallback(file || new Blob([json], { type: 'application/json' }), name);
-  }
-
   function toast(msg) {
     const el = $('#toast'); el.textContent = msg;
     // Keep the toast just above the tab bar, whatever its real height (safe area, font size).
@@ -578,13 +573,14 @@
       case 'tok': if (!LS.cur.checked) { const k = Number(el.dataset.k); LS.cur.picked.push(k); if (LS.cur.hl === k) LS.cur.hl = -1; renderTask(false); } break;
       case 'untok': if (!LS.cur.checked) { LS.cur.picked.splice(Number(el.dataset.n), 1); renderTask(false); } break;
       case 'sym': insertSym(el); break;
-      case 'set': {
-        const k = el.dataset.k; let v = el.dataset.v;
-        if (k === 'goal') v = Number(v);
-        S.settings[k] = v; save(); applySettings(); render(); break;
+      case 'cycle': {
+        // Theme and language are one button each: a tap moves to the next value.
+        const k = el.dataset.k; const list = k === 'theme' ? THEMES : LANGS;
+        S.settings[k] = list[(list.indexOf(S.settings[k]) + 1) % list.length];
+        save(); applySettings(); render();
+        const again = $(`[data-act="cycle"][data-k="${k}"]`); if (again) again.focus({ preventScroll: true });
+        break;
       }
-      case 'export': exportProgress(); break;
-      case 'import': $('#importFile').click(); break;
       case 'reset':
         if (window.confirm(t('resetQ'))) { const keep = S.settings; S = defaults(); S.settings = keep; save(); render(); toast(t('resetDone')); }
         break;
@@ -626,19 +622,17 @@
   document.addEventListener('change', (e) => {
     const k = e.target.dataset.set;
     if (k) {
-      S.settings[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+      if (!TOGGLES.includes(k)) return;
+      S.settings[k] = e.target.checked;
+      if (k === 'music' && !S.settings.music) music.stop();
       save(); applySettings(); render();
-      return;
     }
-    if (e.target.id === 'importFile') {
-      const f = e.target.files && e.target.files[0];
-      if (!f) return;
-      f.text().then((txt) => {
-        const data = JSON.parse(txt);
-        if (!isObj(data) || !isObj(data.prog)) throw new Error('bad');
-        S = sanitize(data); save(); applySettings(); render(); toast(t('imported'));
-      }).catch(() => toast(t('importErr'))).finally(() => { e.target.value = ''; });
-    }
+  });
+
+  // R11: no music while the app is in the background; resume only inside an open lesson.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') music.stop();
+    else if (LS && !LS.finished && S.settings.music) music.start();
   });
 
   if (window.visualViewport) {
@@ -657,5 +651,5 @@
   }
 
   // Exposed for automated checks only.
-  window.__codelingo = { norm, isCorrect, COURSES };
+  window.__codelingo = { norm, isCorrect, optText, correctText, sanitize, COURSES };
 })();

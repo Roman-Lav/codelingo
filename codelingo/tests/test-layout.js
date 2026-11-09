@@ -7,9 +7,10 @@
   const allDone = () => {
     const prog = {};
     window.COURSES.forEach((c) => { prog[c.id] = { done: c.lessons.map((_, i) => i), ans: 20, ok: 15, xp: 400 }; });
-    return { settings: { lang: 'cs', sound: false, hints: true, goal: 30 }, prog, days: {} };
+    return { settings: { lang: 'cs', sound: false, music: false, hints: true }, prog, days: {} };
   };
-  const setLang = (app, l) => { const sel = app.$('select[data-set="lang"]'); sel.value = l; sel.dispatchEvent(new app.win.Event('change', { bubbles: true })); };
+  // Language is one button that cycles en -> ru -> uk -> cs; tap until the wanted one.
+  const setLang = (app, l) => { for (let i = 0; i < 4 && app.doc.documentElement.lang !== l; i++) app.$('[data-act="cycle"][data-k="lang"]').click(); };
   const longestCourse = () => window.COURSES.reduce((a, c) => (c.lessons.length > a.lessons.length ? c : a)).id;
 
   function shellProblems(app, label, c) {
@@ -38,12 +39,6 @@
     test(`layout R8: same with all courses done, lang cs (${w}x${h}, long content)`, async () => {
       const app = await T.loadApp({ state: allDone() }); await resize(app, w, h);
       const c = collector(); await views(app, `${w}x${h} long`, c, longestCourse());
-      // text zoom-ish stress: bigger code size must not break the shell either
-      app.doc.documentElement.style.setProperty('--code-size', '18px');
-      app.$('.tab[data-tab="learn"]').click(); app.$(`.course[data-id="${longestCourse()}"]`).click();
-      shellProblems(app, `${w}x${h} course L code`, c);
-      const s = app.$('#screen');
-      c.check(s.scrollHeight > s.clientHeight || w > 0, 'n/a');
       c.done();
     });
   }
@@ -123,31 +118,31 @@
         c.check(/mono|Menlo|Consolas|Courier/i.test(cs.fontFamily), `${id} code not monospace: ${cs.fontFamily.slice(0, 40)}`);
       }
       const fs = parseFloat(cs.fontSize);
-      // code: S/M/L setting (13/15/18); 16 = iOS no-zoom floor for inputs. Outside code only 13/17/22.
+      // code: fixed 15px; 16 = iOS no-zoom floor for inputs. Outside code only 13/17/22.
       if (!isCode) c.check([13, 17, 22].includes(fs), `${id} font-size ${cs.fontSize}`);
-      else c.check([13, 15, 16, 18].includes(fs), `${id} code font-size ${cs.fontSize}`);
+      else c.check([15, 16].includes(fs), `${id} code font-size ${cs.fontSize}`);
       c.check(['400', '600'].includes(cs.fontWeight), `${id} font-weight ${cs.fontWeight}`);
       if (cs.textTransform === 'uppercase' && el.id !== 'checkBtn' && !el.closest('#checkBtn')) c.check(false, `${id} uppercase`);
     });
   }
 
   test('typography R9: one font, sizes 13/17/22, weights 400/600, caps only on Check — all screens', async () => {
-    const app = await T.loadApp({ state: { ...allDone(), settings: { lang: 'en', sound: false, hints: true, goal: 30 } } });
+    const app = await T.loadApp({ state: { ...allDone(), settings: { lang: 'en', sound: false, music: false, hints: true } } });
     const c = collector(); const seen = { fam: null };
     for (const lang of ['en', 'cs']) {
       if (lang === 'cs') { app.$('.tab[data-tab="settings"]').click(); setLang(app, 'cs'); }
       for (const tab of ['learn', 'profile', 'settings']) { app.$(`.tab[data-tab="${tab}"]`).click(); audit(app, `${lang} ${tab}`, c, seen); }
       app.$('.tab[data-tab="learn"]').click(); app.$('.course[data-id="js"]').click(); audit(app, `${lang} course`, c, seen);
     }
-    // dark theme + largest code size
+    // dark theme
     app.$('.tab[data-tab="settings"]').click();
-    app.$('[data-act="set"][data-k="theme"][data-v="dark"]').click(); app.$('[data-act="set"][data-k="code"][data-v="l"]').click();
+    for (let i = 0; i < 3 && app.doc.documentElement.dataset.theme !== 'dark'; i++) app.$('[data-act="cycle"][data-k="theme"]').click();
     audit(app, 'dark settings', c, seen);
     c.done();
   });
 
   window.COURSES.forEach((course) => test(`typography R9 + hint overlap: ${course.id} lesson 1 — every task, sheet, finish`, async () => {
-    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, hints: true }, prog: {}, days: {} } });
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false, hints: true }, prog: {}, days: {} } });
     const c = collector(); const seen = { fam: null };
     app.$(`.course[data-id="${course.id}"]`).click();
     const lesson = course.lessons[0]; app.$('.lesson-item[data-i="0"]').click();
@@ -177,19 +172,92 @@
     c.done();
   }));
 
-  test('no numbers R9: profile has no %, no XP/streak/accuracy totals; goal N/M XP present', async () => {
+  test('no numbers R9: profile and settings have no digits except the version line', async () => {
     const dk = (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
     const st = allDone(); st.settings.lang = 'en'; st.days = { [dk]: 12 };
     const app = await T.loadApp({ state: st });
+    const c = collector();
     app.$('.tab[data-tab="profile"]').click();
-    const c = collector(); const txt = app.$('#screen').textContent;
-    c.check(/12\s*\/\s*30\s*XP/.test(txt), 'goal "12/30 XP" missing: ' + txt.replace(/\s+/g, ' ').slice(0, 120));
-    c.check(!/%/.test(txt), 'profile contains %');
-    const rest = txt.replace(/\d+\s*\/\s*\d+\s*XP/, '').replace(/Last 7 days/, 'Last days');
-    c.check(!/\d/.test(rest), 'profile has digits outside goal: ' + (rest.match(/.{0,15}\d+.{0,15}/) || [''])[0].replace(/\s+/g, ' '));
-    c.check(!/streak|accuracy|total/i.test(rest), 'profile mentions streak/accuracy/total');
+    const txt = app.$('#screen').textContent;
+    c.check(!/\d|%/.test(txt), 'profile has digits: ' + (txt.match(/.{0,15}\d+.{0,15}/) || [''])[0].replace(/\s+/g, ' '));
+    c.check(!/streak|accuracy|total|XP/i.test(txt), 'profile mentions streak/accuracy/total/XP');
+    app.$('.tab[data-tab="settings"]').click();
+    const set = app.$('#screen').textContent.replace(app.$('.about').textContent, '');
+    c.check(!/\d/.test(set), 'settings has digits outside the version line');
     c.done();
   });
+
+  // ---- R10 geometry ----
+  const px = (v) => Math.round(parseFloat(v));
+  // Every word of the element's text sits on one line (no break inside a word).
+  function wordsWhole(app, el) {
+    const bad = [];
+    const walker = app.doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n; (n = walker.nextNode());) {
+      const re = /\S+/g; let m;
+      while ((m = re.exec(n.nodeValue))) {
+        const r = app.doc.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+        const tops = new Set([...r.getClientRects()].map((x) => Math.round(x.top)));
+        if (tops.size > 1) bad.push(m[0]);
+      }
+    }
+    return bad;
+  }
+
+  for (const [w, h] of [[320, 568], [390, 844], [760, 1024]]) {
+    test(`geometry R10: grid, paddings, gaps, centring, shadows (${w}x${h})`, async () => {
+      const app = await T.loadApp({ state: allDone() }); await resize(app, w, h);
+      const c = collector(); const cs = (el) => app.win.getComputedStyle(el);
+      for (const l of ['cs', 'uk']) {
+        app.$('.tab[data-tab="settings"]').click(); setLang(app, l); app.$('.tab[data-tab="learn"]').click(); await sleep(30);
+        const scr = app.$('#screen'); const grid = app.$('.grid'); const cards = app.$$('.course');
+        const sr = scr.getBoundingClientRect(); const gr = grid.getBoundingClientRect();
+        c.check(px(cs(grid).columnGap) === 16 && px(cs(grid).rowGap) === 16, `${l} grid gap ${cs(grid).gap}`);
+        const cols = new Set(cards.map((k) => Math.round(k.getBoundingClientRect().left))).size;
+        c.check(cols === (w >= 700 ? 3 : 2), `${l} ${cols} columns`);
+        const sizes = new Set(cards.map((k) => { const r = k.getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); }));
+        c.check(sizes.size === 1, `${l} card sizes differ: ${[...sizes]}`);
+        if (scr.scrollHeight <= scr.clientHeight) c.check(Math.abs(sr.bottom - px(cs(scr).paddingBottom) - gr.bottom) <= 1, `${l} empty band under grid: ${Math.round(sr.bottom - gr.bottom)}px`);
+        cards.forEach((k) => {
+          const r = k.getBoundingClientRect(); const id = k.dataset.id;
+          c.check(px(cs(k).paddingLeft) === 16 && px(cs(k).paddingTop) === 16, `${id} card padding ${cs(k).padding}`);
+          c.check(cs(k).boxShadow.includes('3px 3px 0px'), `${id} shadow ${cs(k).boxShadow}`);
+          k.querySelectorAll('.badge, .cname').forEach((t) => {
+            const tr = t.getBoundingClientRect();
+            c.check(Math.abs((tr.left + tr.right) / 2 - (r.left + r.right) / 2) <= 1.5, `${l} ${id} ${t.className} not centred horizontally`);
+          });
+          const kids = [...k.querySelectorAll('.badge, .cname')].map((t) => t.getBoundingClientRect());
+          const top = Math.min(...kids.map((x) => x.top)), bot = Math.max(...kids.map((x) => x.bottom));
+          c.check(Math.abs((top + bot) / 2 - (r.top + r.bottom) / 2) <= 1.5, `${l} ${id} content not centred vertically`);
+          const bw = wordsWhole(app, k); c.check(!bw.length, `${l} ${id} word broken: ${bw}`);
+        });
+        // content column and tab bar share the same centred width
+        const tb = app.$('#tabbar'); const tbr = tb.getBoundingClientRect();
+        const cl = sr.left + px(cs(scr).paddingLeft), cr = sr.right - px(cs(scr).paddingRight);
+        const tl = tbr.left + px(cs(tb).paddingLeft), trr = tbr.right - px(cs(tb).paddingRight);
+        c.check(Math.abs(cl - tl) <= 1 && Math.abs(cr - trr) <= 1, `${l} column ${cl}..${cr} vs tab bar ${tl}..${trr}`);
+        c.check(Math.abs(cl - (w - cr)) <= 1, `${l} column not centred`);
+        c.check(px(cs(scr).paddingLeft) >= 16, `${l} screen padding ${cs(scr).paddingLeft}`);
+        app.$('.tab[data-tab="settings"]').click();
+        app.$$('#screen .set button, #screen .stack button').forEach((b) => {
+          c.check(cs(b).textAlign === 'center', `${l} settings button text-align ${cs(b).textAlign}`);
+          c.check(cs(b).boxShadow.includes('3px 3px 0px'), `${l} settings button "${b.textContent.trim()}" shadow ${cs(b).boxShadow}`);
+          const bw = wordsWhole(app, b); c.check(!bw.length, `${l} settings button word broken: ${bw}`);
+        });
+        app.$('.tab[data-tab="profile"]').click();
+        c.check(px(cs(app.$('.klist')).rowGap) === 24, `${l} profile section gap ${cs(app.$('.klist')).rowGap}`);
+        app.$$('.krow').forEach((r) => c.check(cs(r).boxShadow === 'none', 'static row has a shadow'));
+      }
+      app.$('.tab[data-tab="learn"]').click(); app.$('.course[data-id="js"]').click();
+      const head = app.$('.course-head');
+      c.check(px(cs(head).marginBottom) === 24, `course head section gap ${cs(head).marginBottom}`);
+      c.check(px(cs(app.$('.list')).rowGap) === 16, 'lesson gap');
+      // one shadow value on every element in the app (inset glow excluded)
+      const shadows = new Set(app.$$('body *').map((el) => cs(el).boxShadow).filter((v) => v !== 'none' && !v.includes('inset')));
+      c.check(shadows.size <= 1, 'shadows: ' + [...shadows].join(' | '));
+      c.done();
+    });
+  }
 
   test('no numbers R9: course cards on Learn have no digits (all langs)', async () => {
     const app = await T.loadApp({ state: allDone() });

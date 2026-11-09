@@ -8,13 +8,14 @@ insets (notch / home indicator), walks through the app's screens and measures:
   safe-area  header/top bar under the notch, buttons under the home indicator
   covered    content hidden behind the fixed tab bar or lesson footer
   clipped    text cut off inside its box
+  band       empty band under the course grid, or course cards of different size (R10)
   overlap    sibling elements drawn on top of each other
   tap        tap target smaller than 44x44
 Screenshots (viewport-sized, like a phone shows it) go to dist/layout/<device>/<screen>.png.
 
 Uses the Chrome DevTools client from .claude/skills/responsive-check/scripts/shoot.py.
 Needs only python3 and Google Chrome.
-Usage: python3 tools/layout-check.py [--devices se1,iphone15] [--lang ru] [--dark] [--code l]
+Usage: python3 tools/layout-check.py [--devices se1,iphone15] [--lang ru] [--dark]
 Exit code 1 if any problem is found.
 """
 import argparse
@@ -173,6 +174,17 @@ MEASURE_JS = r"""
     if (body.getBoundingClientRect().height < 120) out.push(['covered', `lesson body only ${Math.round(body.getBoundingClientRect().height)}px tall`]);
   }
 
+  // R10: the course grid fills the content height (no empty band under it); cards are equal.
+  const grid = !inLesson && document.querySelector('#screen[data-view="learn"] .grid');
+  if (grid) {
+    const scr = document.querySelector('#screen');
+    const pb = parseFloat(getComputedStyle(scr).paddingBottom) || 0;
+    const band = scr.getBoundingClientRect().bottom - pb - grid.getBoundingClientRect().bottom;
+    if (scr.scrollHeight <= scr.clientHeight + 1 && band > 1) out.push(['band', `empty band of ${Math.round(band)}px under the course grid`]);
+    const sizes = new Set([...grid.children].map((c) => { const r = c.getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); }));
+    if (sizes.size > 1) out.push(['band', `course cards differ in size: ${[...sizes].join(', ')}`]);
+  }
+
   // clipped text
   for (const el of els) {
     if (!el.childNodes.length || ![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
@@ -227,7 +239,6 @@ def main():
     ap.add_argument("--screens", default=",".join(SCREENS))
     ap.add_argument("--lang", default="ru")
     ap.add_argument("--dark", action="store_true")
-    ap.add_argument("--code", default="m", choices=["s", "m", "l"])
     ap.add_argument("--out", default=str(ROOT / "dist/layout"))
     ap.add_argument("--max-lines", type=int, default=4, help="problems printed per screen")
     a = ap.parse_args()
@@ -237,8 +248,8 @@ def main():
         sys.exit("Google Chrome not found (set CHROME=<path>).")
     httpd = serve(ROOT / "codelingo")
     base = f"http://127.0.0.1:{httpd.server_address[1]}/index.html"
-    state = {"settings": {"lang": a.lang, "theme": "dark" if a.dark else "light", "code": a.code,
-                          "sound": False, "motion": False, "hints": True, "goal": 30},
+    state = {"settings": {"lang": a.lang, "theme": "dark" if a.dark else "light",
+                          "sound": False, "music": False, "motion": False, "hints": True},
              "prog": {}, "days": {}}
     proc, profile, port = shoot.start_browser(browser)
     total, summary = 0, []

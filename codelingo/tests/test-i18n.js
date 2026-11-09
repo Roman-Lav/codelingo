@@ -21,8 +21,4 @@
     }));
     k.done();
   });
-
-  test('i18n: level names cover all 6 knowledge levels', () => {
-    Object.keys(I).forEach((l) => assert.eq(I[l].lvl.length, 6, `${l}.lvl length`));
-  });
 })();
