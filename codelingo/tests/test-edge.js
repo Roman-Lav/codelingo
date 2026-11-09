@@ -314,4 +314,101 @@
       await tryOne('$&', 'v = $&', false);
     } finally { L.tasks.forEach((t, i) => { Object.keys(t).forEach((k) => delete t[k]); Object.assign(t, saved[i]); }); }
   });
+  // ---- iteration 2: pointerdown fallback, dock, shared context ----
+  function fakeAudio2(win) {
+    const log = { ctx: 0, suspended: 0, refuse: false, calls: [] };
+    const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} });
+    const node = () => ({ connect() {}, disconnect() {} });
+    class FakeCtx {
+      constructor() { log.ctx++; this.state = 'running'; this.destination = node(); this.t0 = performance.now(); }
+      get currentTime() { return (performance.now() - this.t0) / 1000; }
+      resume() { log.calls.push('resume'); if (!log.refuse) this.state = 'running'; return Promise.resolve(); }
+      suspend() { log.suspended++; log.calls.push('suspend'); this.state = 'suspended'; return Promise.resolve(); }
+      createGain() { const g = node(); g.gain = param(); return g; }
+      createOscillator() { const o = node(); o.frequency = param(); o.start = () => { log.calls.push('osc'); }; o.stop = () => {}; return o; }
+    }
+    win.AudioContext = FakeCtx; win.webkitAudioContext = undefined;
+    return log;
+  }
+
+  test('edge: pointerdown fallback listener is removed after one use', async () => {
+    const app = await T.loadApp({ state: MUSIC });
+    const log = fakeAudio2(app.win); const M = app.win.CLMusic;
+    const lesson = app.$('#lesson');
+    let added = 0, removed = 0;
+    const add = lesson.addEventListener.bind(lesson), rem = lesson.removeEventListener.bind(lesson);
+    lesson.addEventListener = (t, f, o) => { if (t === 'pointerdown') added++; return add(t, f, o); };
+    lesson.removeEventListener = (t, f, o) => { if (t === 'pointerdown') removed++; return rem(t, f, o); };
+    open(app, 'js', 0);
+    setHidden(app, true); log.refuse = true; setHidden(app, false); await T.sleep(30);
+    assert(!M.playing, 'refused');
+    assert.eq(added, 1, 'one fallback listener');
+    log.refuse = false;
+    lesson.dispatchEvent(new app.win.Event('pointerdown'));
+    assert(M.playing, 'tap restarts music');
+    M.stop();
+    lesson.dispatchEvent(new app.win.Event('pointerdown'));
+    assert(!M.playing, 'listener was one-shot: a second tap must not restart music');
+  });
+
+  test('edge: repeated visible events do not stack pointerdown fallback listeners', async () => {
+    const app = await T.loadApp({ state: MUSIC });
+    const log = fakeAudio2(app.win);
+    const lesson = app.$('#lesson');
+    let added = 0;
+    const add = lesson.addEventListener.bind(lesson);
+    lesson.addEventListener = (t, f, o) => { if (t === 'pointerdown') added++; return add(t, f, o); };
+    open(app, 'js', 0);
+    log.refuse = true;
+    for (let i = 0; i < 4; i++) { setHidden(app, true); setHidden(app, false); await T.sleep(20); }
+    assert(added <= 1, `${added} pointerdown listeners added for 4 refused resumes (expected 1)`);
+  });
+
+  test('edge: leaving the lesson with a pending fallback: a tap does not start music', async () => {
+    const app = await T.loadApp({ state: MUSIC });
+    const log = fakeAudio2(app.win); const M = app.win.CLMusic;
+    open(app, 'js', 0);
+    setHidden(app, true); log.refuse = true; setHidden(app, false); await T.sleep(30);
+    app.$('[data-act="quit"]').click();
+    log.refuse = false;
+    app.$('#lesson').dispatchEvent(new app.win.Event('pointerdown'));
+    assert(!M.playing, 'no music outside a lesson');
+  });
+
+  test('edge: symbol dock is empty and hidden on a non-typed task and after exiting the lesson', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false } } });
+    open(app, 'js', 0);
+    const dock = app.$('#symdock');
+    assert(!app.$('#ans'), 'first task is not typed');
+    assert(dock.hidden && dock.innerHTML === '', 'dock empty+hidden on MCQ/order task');
+    app.$('[data-act="quit"]').click();
+    assert(app.$('#lesson').hidden && dock.hidden, 'dock hidden after exit');
+  });
+
+  test('edge: sound effects play with music off and share one AudioContext', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: true, music: false } } });
+    const log = fakeAudio2(app.win);
+    open(app, 'js', 0);
+    const before = log.calls.filter((x) => x === 'osc').length;
+    const o = app.$('.opt'); assert(o, 'an option');
+    o.click(); app.$('#checkBtn').click();
+    const after = log.calls.filter((x) => x === 'osc').length;
+    assert(after > before, 'effect oscillators started with music off');
+    assert.eq(log.ctx, 1, 'one AudioContext');
+    assert(!app.win.CLMusic.playing, 'music not playing');
+  });
+
+  test('edge: beep right after music.stop() resumes the context (not left suspended mid-jingle)', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: true, music: true } } });
+    const log = fakeAudio2(app.win); const M = app.win.CLMusic;
+    open(app, 'js', 0);
+    assert(M.playing, 'playing');
+    M.stop();
+    assert.eq(M.context().state, 'suspended', 'suspended by stop');
+    // a correct/wrong answer triggers beep()
+    const o = app.$('.opt'); o.click(); app.$('#checkBtn').click();
+    assert.eq(M.context().state, 'running', 'beep resumed the context');
+    const calls = log.calls; const lastSusp = calls.lastIndexOf('suspend'); const lastRes = calls.lastIndexOf('resume');
+    assert(lastRes > lastSusp, 'resume issued after the suspend: ' + calls.join(','));
+  });
 })();
