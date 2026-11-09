@@ -172,15 +172,25 @@
     c.done();
   }));
 
-  test('no numbers R9: profile and settings have no digits except the version line', async () => {
+  test('no numbers R9: digits only in the profile course blocks; settings only in the version line', async () => {
     const dk = (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
     const st = allDone(); st.settings.lang = 'en'; st.days = { [dk]: 12 };
     const app = await T.loadApp({ state: st });
     const c = collector();
     app.$('.tab[data-tab="profile"]').click();
-    const txt = app.$('#screen').textContent;
-    c.check(!/\d|%/.test(txt), 'profile has digits: ' + (txt.match(/.{0,15}\d+.{0,15}/) || [''])[0].replace(/\s+/g, ' '));
-    c.check(!/streak|accuracy|total|XP/i.test(txt), 'profile mentions streak/accuracy/total/XP');
+    const scr = app.$('#screen').cloneNode(true);
+    const blocks = [...scr.querySelectorAll('.klist > .krow')];
+    c.check(blocks.length === window.COURSES.length, 'one block per course');
+    // Inside a block numbers live only in the percent and the stats caption (screen 4).
+    blocks.forEach((b) => {
+      const rest = b.cloneNode(true); rest.querySelectorAll('.kpct, .kstat').forEach((e) => e.remove());
+      c.check(!/\d|%/.test(rest.textContent), `${b.dataset.id}: digits outside percent/stats: ${rest.textContent.replace(/\s+/g, ' ')}`);
+      c.check(/^\d+%$/.test(b.querySelector('.kpct').textContent), `${b.dataset.id}: percent ${b.querySelector('.kpct').textContent}`);
+    });
+    blocks.forEach((b) => b.remove());
+    const txt = scr.textContent;
+    c.check(!/\d|%/.test(txt), 'profile has digits outside the course blocks: ' + (txt.match(/.{0,15}\d+.{0,15}/) || [''])[0].replace(/\s+/g, ' '));
+    c.check(!/streak|accuracy|total|XP/i.test(app.$('#screen').textContent), 'profile mentions streak/accuracy/total/XP');
     app.$('.tab[data-tab="settings"]').click();
     const set = app.$('#screen').textContent.replace(app.$('.about').textContent, '');
     c.check(!/\d/.test(set), 'settings has digits outside the version line');
@@ -245,8 +255,14 @@
           const bw = wordsWhole(app, b); c.check(!bw.length, `${l} settings button word broken: ${bw}`);
         });
         app.$('.tab[data-tab="profile"]').click();
-        c.check(px(cs(app.$('.klist')).rowGap) === 24, `${l} profile section gap ${cs(app.$('.klist')).rowGap}`);
-        app.$$('.krow').forEach((r) => c.check(cs(r).boxShadow === 'none', 'static row has a shadow'));
+        c.check(px(cs(app.$('.klist')).rowGap) === 16, `${l} profile block gap ${cs(app.$('.klist')).rowGap}`);
+        c.check(px(cs(app.$('.klist')).marginTop) === 24, `${l} profile section gap ${cs(app.$('.klist')).marginTop}`);
+        app.$$('.krow').forEach((r) => {
+          c.check(cs(r).boxShadow === 'none', 'static block has a shadow');
+          c.check(px(cs(r).paddingTop) === 16 && px(cs(r).paddingLeft) === 16, `${l} ${r.dataset.id} block padding ${cs(r).padding}`);
+          const bw = wordsWhole(app, r); c.check(!bw.length, `${l} ${r.dataset.id} profile word broken: ${bw}`);
+          c.check(r.getBoundingClientRect().right <= w - 16 + 0.5, `${l} ${r.dataset.id} block overflows`);
+        });
       }
       app.$('.tab[data-tab="learn"]').click();
       const look = (el) => ['fontSize', 'fontWeight', 'fontFamily', 'paddingTop', 'paddingLeft', 'lineHeight'].map((k) => cs(el)[k]).join('|');

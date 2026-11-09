@@ -101,7 +101,7 @@ button.card:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: 
 
 /* Course: the percent looks exactly like the course name (R9). */
 .course-head { display: flex; align-items: center; gap: 8px; margin-bottom: var(--section); }
-.course-head h1, .course-head .kpct { font-size: var(--fs-title); font-weight: 600; color: var(--ink); line-height: 1.4; }
+.course-head h1, .course-head h2, .course-head .kpct { font-size: var(--fs-title); font-weight: 600; color: var(--ink); line-height: 1.4; }
 .course-head .kpct { margin-left: auto; flex: none; }
 .list { display: grid; grid-auto-rows: 1fr; gap: var(--gap); } /* every lesson row as tall as the tallest */
 .lesson-item { position: relative; display: flex; align-items: center; justify-content: space-between; gap: var(--gap); min-height: 64px; text-align: left; }
@@ -129,8 +129,12 @@ button.card:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: 
 .week span { flex: 1; text-align: center; font-size: var(--fs-caption); color: var(--muted); }
 .week i { display: block; height: 16px; border: 2px solid var(--line); margin-bottom: 4px; }
 .week i.on { background: var(--accent); }
-.klist { display: flex; flex-direction: column; gap: var(--section); margin-top: var(--section); }
-.krow b { display: block; }
+/* One static block per course (screen 4): border like .card, no shadow (not a button). */
+.klist { display: flex; flex-direction: column; gap: var(--gap); margin-top: var(--section); }
+.krow { background: var(--surface); border: 2px solid var(--line); padding: var(--gap); }
+.krow .course-head { margin-bottom: 0; }
+/* Two caption parts on one line when they fit, otherwise stacked; never smaller than 13px. */
+.kstat { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: var(--gap); margin-top: 8px; font-size: var(--fs-caption); color: var(--muted); }
 .segbar { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; margin-top: 8px; }
 .segbar i { display: block; height: 16px; border: 2px solid var(--line); }
 .segbar i.ok { background: var(--ok); }
@@ -205,7 +209,6 @@ pre.code.has-fill { cursor: text; } /* the whole block is the tap target of the 
 .sheet.bad { background: var(--bad-bg); color: var(--bad); }
 .sheet h3 { display: flex; align-items: center; gap: 8px; font-size: var(--fs-body); margin-bottom: 4px; }
 .sheet h3 svg { width: 20px; height: 20px; }
-.sheet pre { color: var(--ink); font-size: var(--code-size); white-space: pre-wrap; word-break: break-word; margin: 4px 0 8px; }
 .lfoot { padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
 .lfoot .btn { max-width: 528px; margin: 0 auto; }
 .finish { display: flex; flex-direction: column; align-items: center; gap: 24px; padding-top: 12vh; text-align: center; }

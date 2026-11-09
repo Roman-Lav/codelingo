@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.9';
+  const VERSION = '1.0.10';
   const KEY = 'codelingo.v1';
   const LANGS = ['en', 'ru', 'uk', 'cs'];
   const LANG_NAMES = { en: 'English', ru: 'Русский', uk: 'Українська', cs: 'Čeština' };
@@ -251,6 +251,13 @@
     return acc >= 90 ? 'ok' : acc >= 60 ? 'mid' : 'bad';
   }
 
+  // Profile stats of one course (screen 4): lessons passed and the share of correct answers.
+  function courseStats(c) {
+    const p = prog(c.id);
+    return { done: p.done.length, total: c.lessons.length, ok: p.ok, ans: p.ans, pct: p.ans ? Math.round((100 * p.ok) / p.ans) : null };
+  }
+  const fmt = (s, vars) => Object.keys(vars).reduce((acc, k) => acc.split('{' + k + '}').join(String(vars[k])), s);
+
   function viewProfile() {
     const week = [];
     for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); week.push({ on: (S.days[dayKey(d)] || 0) > 0, label: d.toLocaleDateString(S.settings.lang, { weekday: 'short' }).slice(0, 2) }); }
@@ -259,11 +266,16 @@
       <div class="klist">` +
       COURSES.map((c) => {
         const p = prog(c.id);
-        const aria = t('segAria').replace('{n}', p.done.length).replace('{m}', c.lessons.length);
-        return `<div class="krow" data-id="${c.id}">
-          <b>${esc(c.name)}</b>
+        const st = courseStats(c);
+        const aria = fmt(t('segAria'), { n: st.done, m: st.total });
+        const lessons = fmt(t('statLessons'), { n: st.done, m: st.total });
+        const acc = st.pct === null ? t('statAccNone') : fmt(t('statAcc'), { p: st.pct, ok: st.ok, ans: st.ans });
+        // R9: the name and the percent look exactly like the course-screen header (.course-head h1/.kpct).
+        return `<section class="krow" data-id="${c.id}">
+          <div class="course-head"><h2>${esc(c.name)}</h2><span class="kpct">${knowledge(c)}%</span></div>
           <div class="segbar" role="img" aria-label="${esc(aria)}">${c.lessons.map((_, i) => `<i class="${segClass(p, i)}"></i>`).join('')}</div>
-        </div>`;
+          <p class="kstat"><span class="kles">${esc(lessons)}</span><span class="kacc">${esc(acc)}</span></p>
+        </section>`;
       }).join('') + '</div>';
   }
 
@@ -355,7 +367,8 @@
       h += `<div class="opts ${cur.checked ? 'locked' : ''}">` + perm.map((i) => {
         const o = optText(task.o[i]);
         let cls = '';
-        if (cur.checked) { if (i === task.a) cls = 'right'; else if (i === cur.sel) cls = 'wrong'; }
+        // After a check only the picked option is marked; a wrong pick does not reveal the right one (screen 3).
+        if (cur.checked) { if (i === cur.sel) cls = i === task.a ? 'right' : 'wrong'; }
         else if (cur.sel === i) cls = 'sel';
         return `<button class="opt ${o.code ? 'mono' : ''} ${cls}" data-act="opt" data-i="${i}" ${cur.removed.has(i) ? 'disabled' : ''}>${esc(o.text)}</button>`;
       }).join('') + '</div>';
@@ -404,13 +417,6 @@
     return String(answerValue()).trim().length > 0;
   }
 
-  function correctText(task) {
-    if (task.t === 'm') return optText(task.o[task.a]).text;
-    if (task.t === 'f') return task.c.replace('___', () => task.a[0]);
-    if (task.t === 'w') return task.a[0];
-    return task.a.join(' ');
-  }
-
   const CHECK_GUARD_MS = 400; let checkedAt = -Infinity;
   function check() {
     if (LS.finished) return exitLesson(true);
@@ -436,7 +442,7 @@
     }
     const el = $('#ans'); if (el) { el.readOnly = true; el.blur(); }
     renderTask(false);
-    feedback(ok, cur.task);
+    feedback(ok);
   }
 
   function flash(ok) {
@@ -453,14 +459,14 @@
     m.classList.remove('happy', 'sad'); void m.offsetWidth; m.classList.add(cls);
   }
 
-  function feedback(ok, task) {
+  // A wrong answer shows only the "wrong" title: the correct answer is not revealed (screen 3).
+  function feedback(ok) {
     flash(ok);
     beep(ok ? 'ok' : 'bad');
     react(ok ? 'happy' : 'sad');
     const sheet = $('#sheet');
     sheet.className = 'sheet ' + (ok ? 'ok' : 'bad');
-    sheet.innerHTML = `<h3>${pix(ok ? 'check' : 'cross')}<span>${esc(t(ok ? 'correct' : 'wrong'))}</span></h3>` +
-      (ok ? '' : `<div class="small">${esc(t('answer'))}</div><pre>${esc(correctText(task))}</pre>`);
+    sheet.innerHTML = `<h3>${pix(ok ? 'check' : 'cross')}<span>${esc(t(ok ? 'correct' : 'wrong'))}</span></h3>`;
     sheet.hidden = false;
     const btn = $('#checkBtn');
     btn.className = 'btn ' + (ok ? 'ok' : 'bad');
@@ -681,5 +687,5 @@
   }
 
   // Exposed for automated checks only.
-  window.__codelingo = { norm, isCorrect, optText, correctText, sanitize, COURSES };
+  window.__codelingo = { norm, isCorrect, optText, sanitize, COURSES };
 })();

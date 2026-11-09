@@ -104,7 +104,7 @@
     await openLesson(app, 'js', 0);
     const n = lessonCtx.tasks.length;
     assert(!answer(app, false), 'wrong answer accepted');
-    assert(app.$('#sheet').textContent.length > 0, 'correct answer shown');
+    assert.eq(app.$('#sheet').textContent.trim(), 'Not quite', 'wrong sheet shows only the title');
     await cont(app);
     for (let i = 0; i < n; i++) { assert(answer(app, true), `task ${i + 1} wrong`); await cont(app); }
     assert(app.$('.finish'), 'finish after retry');
@@ -248,14 +248,17 @@
 
   test('app: fill-blank check treats "$" in the input literally ($$ bug)', async () => {
     const app = await T.loadApp();
-    const { isCorrect, correctText } = app.win.__codelingo;
+    const { isCorrect } = app.win.__codelingo;
     const task = { t: 'f', c: 'const s = `${___}`;', a: ['name'] };
     assert(isCorrect(task, 'js', 'name'), 'right answer accepted');
     const tpl = { t: 'f', c: 'x = ___;', a: ['"${"'] };
     assert(isCorrect(tpl, 'js', '"${"'), 'literal ${ accepted');
     assert(!isCorrect(tpl, 'js', '"$${"'), '"$${" must not equal "${"');
     assert(!isCorrect({ t: 'f', c: 'a ___ b', a: ['x'] }, 'js', '$&'), '"$&" must not insert the match');
-    assert.eq(correctText({ t: 'f', c: 'v = ___', a: ['$$'] }), 'v = $$', 'correctText keeps $$');
+    const dd = { t: 'f', c: 'v = ___', a: ['$$'] };
+    assert(isCorrect(dd, 'js', '$$'), 'answer "$$" stays literal and is accepted');
+    assert(!isCorrect(dd, 'js', '$'), '"$" must not equal the "$$" answer');
+    assert(!('correctText' in app.win.__codelingo), 'correctText removed (the answer is never shown)');
   });
 
   test('app: plain-word options render in the system font, code options in mono (R9)', async () => {
@@ -307,7 +310,7 @@
     assert.eq(fresh.$('.kpct').textContent, '0%', 'untouched course 0%');
   });
 
-  test('app: profile — 7-day strip without label, one 10-segment bar per course, no numbers', async () => {
+  test('app: profile — 7-day strip without label, one block with a 10-segment bar per course', async () => {
     const dk = (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
     const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false }, prog: { js: { done: [0, 1, 2, 3], ans: 10, ok: 5, xp: 150, best: { 0: 100, 1: 90, 2: 89, 3: 59, 4: 100 } } }, days: { [dk]: 15 } } });
     app.$('.tab[data-tab="profile"]').click();
@@ -321,13 +324,133 @@
     c.check(segs.join() === 'ok,ok,mid,bad,,,,,,', 'js segments: ' + segs.join());
     const ws = new Set(app.$$('.krow[data-id="js"] .segbar i').map((i) => Math.round(i.getBoundingClientRect().width)));
     c.check(ws.size === 1, 'equal segment widths: ' + [...ws].join());
-    c.check(!/\d/.test(app.$('#screen').textContent), 'digits in profile');
+    const outside = app.$('#screen').cloneNode(true); outside.querySelectorAll('.krow').forEach((r) => r.remove());
+    c.check(!/\d/.test(outside.textContent), 'digits in profile outside the course blocks: ' + outside.textContent.replace(/\s+/g, ' '));
     c.check(!app.$('.lvl'), 'no level words');
     const rows = app.$$('.krow').map((r) => r.getBoundingClientRect());
-    for (let i = 1; i < rows.length; i++) c.check(Math.round(rows[i].top - rows[i - 1].bottom) === 24, `row gap ${rows[i].top - rows[i - 1].bottom}`);
+    for (let i = 1; i < rows.length; i++) c.check(Math.round(rows[i].top - rows[i - 1].bottom) === 16, `block gap ${rows[i].top - rows[i - 1].bottom}`);
+    app.$$('.krow').forEach((r) => {
+      const cs = app.win.getComputedStyle(r);
+      c.check(cs.boxShadow === 'none', r.dataset.id + ': static block has a shadow');
+      c.check(cs.borderTopWidth === '2px' && cs.borderTopStyle === 'solid' && cs.paddingTop === '16px' && cs.paddingLeft === '16px', `${r.dataset.id}: border ${cs.borderTopWidth} ${cs.borderTopStyle}, padding ${cs.padding}`);
+    });
     app.$$('#screen *').forEach((el) => { const cs = app.win.getComputedStyle(el); if (cs.borderBottomStyle === 'dotted' || cs.borderTopStyle === 'dotted') c.check(false, 'dotted rule on ' + el.className); });
     const ok = app.win.getComputedStyle(app.$('.segbar i.ok')).backgroundColor, mid = app.win.getComputedStyle(app.$('.segbar i.mid')).backgroundColor;
     c.check(ok !== mid && mid !== 'rgba(0, 0, 0, 0)', 'mid colour set: ' + mid);
+    c.done();
+  });
+
+  // Screen 4: per-course stats in the profile blocks.
+  const statOf = (app, id) => { const r = app.$(`.krow[data-id="${id}"]`); return { name: r.querySelector('.course-head h2').textContent, pct: r.querySelector('.kpct').textContent, les: r.querySelector('.kles').textContent, acc: r.querySelector('.kacc').textContent }; };
+  const NB = ' ';
+
+  test('app: profile blocks show "Lessons N of 10" and "Correct answers P% (ok of ans)", "—" without answers', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false }, prog: { js: { done: [0, 1, 2], ans: 30, ok: 24, xp: 0 }, py: { done: [], ans: 3, ok: 0, xp: 0 }, css: { done: [0], ans: 3, ok: 2, xp: 0 } } } });
+    app.$('.tab[data-tab="profile"]').click();
+    const c = T.collector();
+    const js = statOf(app, 'js');
+    c.check(js.les === `Lessons 3${NB}of${NB}10`, 'js lessons: ' + js.les);
+    c.check(js.acc === `Correct answers 80% (24${NB}of${NB}30)`, 'js accuracy: ' + js.acc);
+    c.check(statOf(app, 'py').acc === `Correct answers 0% (0${NB}of${NB}3)`, 'py 0%: ' + statOf(app, 'py').acc);
+    c.check(statOf(app, 'css').acc === `Correct answers 67% (2${NB}of${NB}3)`, 'css rounds 66.7 to 67: ' + statOf(app, 'css').acc);
+    const html = statOf(app, 'html');
+    c.check(html.les === `Lessons 0${NB}of${NB}10`, 'untouched lessons: ' + html.les);
+    c.check(html.acc === `Correct answers${NB}—`, 'no answers -> dash: ' + html.acc);
+    c.check(!/\d/.test(html.acc), 'no number when there are no answers');
+    c.check(!app.$('.lvl') && !/beginner|novice|expert|level/i.test(app.$('.klist').textContent), 'no level words');
+    // ru wording from the SPEC
+    const ru = await T.loadApp({ state: { settings: { lang: 'ru', sound: false, music: false }, prog: { js: { done: [0, 1, 2], ans: 30, ok: 24, xp: 0 } } } });
+    ru.$('.tab[data-tab="profile"]').click();
+    c.check(statOf(ru, 'js').les === `Уроки 3${NB}из${NB}10`, 'ru lessons: ' + statOf(ru, 'js').les);
+    c.check(statOf(ru, 'js').acc === `Верных ответов 80% (24${NB}из${NB}30)`, 'ru accuracy: ' + statOf(ru, 'js').acc);
+    c.check(statOf(ru, 'html').acc === `Верных ответов${NB}—`, 'ru dash: ' + statOf(ru, 'html').acc);
+    c.done();
+  });
+
+  test('app: profile block percent equals the course screen percent, same header style (R9)', async () => {
+    const prog = { js: { done: [0, 1, 2, 3], ans: 10, ok: 5, xp: 0 }, py: { done: [0], ans: 7, ok: 6, xp: 0 }, css: { done: [], ans: 4, ok: 4, xp: 0 } };
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false }, prog } });
+    const c = T.collector(); const cs = (el) => app.win.getComputedStyle(el);
+    const look = (el) => ['fontSize', 'fontWeight', 'fontFamily', 'lineHeight', 'color'].map((k) => cs(el)[k]).join('|');
+    for (const cr of window.COURSES) {
+      app.$('.tab[data-tab="learn"]').click(); app.$(`.course[data-id="${cr.id}"]`).click();
+      const coursePct = app.$('.course-head .kpct').textContent; const nameLook = look(app.$('.course-head h1')); const pctLook = look(app.$('.course-head .kpct'));
+      app.$('.tab[data-tab="profile"]').click();
+      const r = app.$(`.krow[data-id="${cr.id}"]`);
+      c.check(r.querySelector('.kpct').textContent === coursePct, `${cr.id}: profile ${r.querySelector('.kpct').textContent} vs course ${coursePct}`);
+      c.check(look(r.querySelector('.course-head h2')) === nameLook, `${cr.id}: name look ${look(r.querySelector('.course-head h2'))} vs ${nameLook}`);
+      c.check(look(r.querySelector('.kpct')) === pctLook, `${cr.id}: percent look differs`);
+      const h = r.querySelector('.course-head h2').getBoundingClientRect(), k = r.querySelector('.kpct').getBoundingClientRect();
+      c.check(k.left > h.right && Math.abs(r.getBoundingClientRect().right - 18 - k.right) <= 1, `${cr.id}: percent not on the right`);
+    }
+    c.check(statOf(app, 'js').pct === '30%' && statOf(app, 'css').pct === '0%', 'formula: js 30%, css 0% ' + statOf(app, 'js').pct);
+    const st = cs(app.$('.kstat'));
+    c.check(st.fontSize === '13px', 'caption 13px: ' + st.fontSize);
+    c.done();
+  });
+
+  test('app: profile caption parts stack at 320px instead of shrinking or breaking words (R10)', async () => {
+    const prog = {}; window.COURSES.forEach((cr) => { prog[cr.id] = { done: cr.lessons.map((_, i) => i), ans: 1000, ok: 999, xp: 0 }; });
+    const c = T.collector();
+    for (const lang of ['en', 'ru', 'uk', 'cs']) {
+      const app = await T.loadApp({ state: { settings: { lang, sound: false, music: false }, prog } });
+      app.win.frameElement.style.width = '320px'; app.win.frameElement.style.height = '568px'; await T.sleep(60);
+      app.$('.tab[data-tab="profile"]').click(); await T.sleep(30);
+      app.$$('.krow').forEach((r) => {
+        const rr = r.getBoundingClientRect(); const id = lang + ' ' + r.dataset.id;
+        const les = r.querySelector('.kles'), acc = r.querySelector('.kacc');
+        [les, acc].forEach((el) => {
+          c.check(app.win.getComputedStyle(el).fontSize === '13px', `${id}: caption font ${app.win.getComputedStyle(el).fontSize}`);
+          const b = el.getBoundingClientRect();
+          c.check(b.left >= rr.left + 17 && b.right <= rr.right - 17, `${id}: ${el.className} overflows the block`);
+          const rects = [...el.getClientRects()]; c.check(new Set(rects.map((x) => Math.round(x.top))).size === 1, `${id}: ${el.className} wraps inside`);
+        });
+        const a = les.getBoundingClientRect(), b = acc.getBoundingClientRect();
+        c.check(Math.round(b.top) === Math.round(a.top) || b.top >= a.bottom - 0.5, `${id}: caption parts overlap`);
+      });
+      c.check(app.doc.documentElement.scrollWidth <= 320, `${lang}: horizontal overflow`);
+    }
+    c.done();
+  });
+
+  // Screen 3: a wrong answer reveals nothing.
+  test('app: wrong answer sheet shows only the title, no correct answer (MCQ and typed)', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false } } });
+    const L = app.win.COURSES.find((cr) => cr.id === 'js').lessons[0];
+    const saved = L.tasks.map((x) => ({ ...x }));
+    const set = (task) => L.tasks.forEach((x) => { Object.keys(x).forEach((k) => delete x[k]); Object.assign(x, task); });
+    const open = () => { app.$('.tab[data-tab="learn"]').click(); app.$('.course[data-id="js"]').click(); app.$('.lesson-item[data-i="0"]').click(); };
+    const quit = () => { app.$('[data-act="quit"]').click(); };
+    const c = T.collector();
+    const sheetOk = (tag, secret) => {
+      const sh = app.$('#sheet');
+      c.check(!sh.hidden && sh.classList.contains('bad'), `${tag}: wrong sheet shown`);
+      c.check(sh.textContent.trim() === 'Not quite', `${tag}: sheet text "${sh.textContent.trim()}"`);
+      c.check(sh.querySelector('h3 svg') !== null, `${tag}: cross icon`);
+      c.check(!sh.querySelector('pre, .small'), `${tag}: answer elements in the sheet`);
+      c.check(!sh.textContent.includes(secret) && !/Correct answer/i.test(sh.textContent), `${tag}: sheet reveals the answer`);
+    };
+    try {
+      set({ t: 'm', q: 'Pick', o: ['ZETA_RIGHT', 'alpha', 'beta', 'gamma'], a: 0 });
+      open();
+      app.$('.opt[data-i="1"]').click(); app.$('#checkBtn').click();
+      sheetOk('mcq', 'ZETA_RIGHT');
+      c.check(app.$('.opt[data-i="1"]').classList.contains('wrong'), 'mcq: the pick is marked wrong');
+      c.check(!app.$('.opt.right'), 'mcq: the right option is not highlighted after a wrong pick');
+      quit();
+      for (const [kind, task] of [['fill', { t: 'f', q: 'Fill', c: 'v = ___', a: ['QQ_RIGHT'] }], ['write', { t: 'w', q: 'Write', a: ['QQ_RIGHT()'] }]]) {
+        set(task); open();
+        const el = app.$('#ans'); el.value = 'nope'; el.dispatchEvent(new app.win.Event('input', { bubbles: true }));
+        app.$('#checkBtn').click();
+        sheetOk(kind, 'QQ_RIGHT');
+        quit();
+      }
+      // a right MCQ pick is still marked right
+      set({ t: 'm', q: 'Pick', o: ['ZETA_RIGHT', 'alpha', 'beta', 'gamma'], a: 0 }); open();
+      app.$('.opt[data-i="0"]').click(); app.$('#checkBtn').click();
+      c.check(app.$('.opt[data-i="0"]').classList.contains('right') && app.$('#sheet').classList.contains('ok'), 'mcq: right pick marked right');
+      quit();
+    } finally { L.tasks.forEach((x, i) => { Object.keys(x).forEach((k) => delete x[k]); Object.assign(x, saved[i]); }); }
     c.done();
   });
 

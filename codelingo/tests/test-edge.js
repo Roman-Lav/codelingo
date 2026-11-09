@@ -286,7 +286,7 @@
   });
 
   // ---- $ patterns through the UI ----
-  test('edge/fill: $ patterns in fill answers are literal in checking and in the answer sheet', async () => {
+  test('edge/fill: $ patterns in fill answers are literal in checking; the wrong sheet never shows them', async () => {
     const app = await T.loadApp({ state: { settings: OFFMUSIC } });
     const L = app.win.COURSES.find((c) => c.id === 'js').lessons[0];
     const saved = L.tasks.map((t) => ({ ...t }));
@@ -306,7 +306,7 @@
       for (const p of ['$&', "$'", '$`', '$$', '$1', '${x}', '$<a>']) {
         await tryOne(p, p, true);
         const sheet = await tryOne(p, 'nope', false);
-        assert(sheet.includes('v = ' + p), `sheet shows literal ${p}: ${sheet}`);
+        assert(!sheet.includes('v = '), `wrong sheet reveals the answer: ${sheet}`);
       }
       await tryOne('$', '$$', false); // "$$" must not collapse to "$"
       await tryOne('$$', '$', false);
