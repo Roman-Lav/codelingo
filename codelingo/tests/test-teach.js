@@ -258,4 +258,150 @@
     });
     k.done();
   });
+
+  // ---- QA edge tests (learn mode) ----
+  test('teach/edge: hint on a k card reveals nothing, even repeated, and changes no counters', async () => {
+    for (const hints of [true, false]) {
+      const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false, hints } }, teach: FIX });
+      open(app);
+      for (let i = 0; i < 5; i++) {
+        app.$('#lmascot').click();
+        const b = app.$('#bubble');
+        assert(!b.hidden && b.textContent === app.win.I18N.en.hintNone, `hints=${hints}: only "nothing to hint"`);
+        assert(!b.querySelector('pre') && !b.textContent.includes('let'), 'no code in the bubble');
+      }
+      assert(isTeach(app), 'still on the card');
+      const p0 = (app.stored().prog || {}).js;
+      assert(!p0 || (p0.ans === 0 && p0.xp === 0), 'hints on a card change no counters');
+      await press(app);
+      T.typeText(app, A.code); btn(app).click();
+      assert(app.$('#sheet').classList.contains('ok'), 'accepted');
+      const p = app.stored().prog.js;
+      assert.eq(p.ans, 1, 'only the repeat is counted'); assert.eq(p.ok, 1, 'ok');
+    }
+  });
+
+  test('teach/edge: wrong r then correct r = 2 XP (like practice); accuracy counts both attempts', async () => {
+    const app = await T.loadApp({ state: OFF, teach: { js: [[A]] } });
+    setTasks(app, 'js', 0, [MCQ]);
+    open(app);
+    await press(app);
+    T.typeText(app, 'zzz'); btn(app).click();
+    assert(app.$('#sheet').classList.contains('bad'), 'wrong');
+    await press(app);
+    app.$('.opt[data-i="0"]').click(); btn(app).click(); await press(app);
+    T.typeText(app, A.code); btn(app).click();
+    assert(app.$('#sheet').classList.contains('ok'), 'correct on retry');
+    await press(app);
+    assert(app.$('.finish'), 'finish');
+    const p = app.stored().prog.js;
+    assert.eq(p.xp - 10, 2, 'repeat after a mistake is worth 2 XP (practice MCQ 10)');
+    assert.eq(p.ans, 3, 'attempts: wrong r, MCQ, correct r'); assert.eq(p.ok, 2, 'correct');
+    assert.eq(p.best[0], 67, 'accuracy = 2 of 3 attempts');
+  });
+
+  test('teach/edge: quit during cards needs no confirm; after one scored answer it does', async () => {
+    const app = await T.loadApp({ state: OFF, teach: FIX });
+    open(app);
+    await press(app);
+    app.$('[data-act="quit"]').click();
+    assert(!app.$('.modal') && app.$('#lesson').hidden, 'on a repeat before answering: no modal');
+    open(app);
+    await press(app);
+    T.typeText(app, A.code); btn(app).click(); await press(app);
+    assert(isTeach(app), 'next card');
+    app.$('[data-act="quit"]').click();
+    assert(app.$('.modal'), 'modal after a scored answer, even on a card');
+    assert(!app.$('#lesson').hidden, 'lesson still open behind the modal');
+    app.$$('.modal .mbox button')[0].click();
+    assert(!app.$('.modal') && !app.$('#lesson').hidden, 'first modal button keeps the lesson');
+    assert(isTeach(app), 'still the same card');
+  });
+
+  test('teach/edge: best comes from scored tasks only (all correct = 100)', async () => {
+    const app = await T.loadApp({ state: OFF, teach: FIX });
+    open(app);
+    const tasks = app.win.COURSES.find((c) => c.id === 'js').lessons[0].tasks;
+    const n = 2 + tasks.length;
+    for (const cd of [A, B]) { await press(app); T.typeText(app, cd.code); btn(app).click(); await press(app); }
+    let guard = 0;
+    while (!app.$('.finish') && guard++ < 30) {
+      const q = tasks.find((x) => x.q.split('§')[0] === app.$('#lessonBody .q').textContent);
+      assert(q, 'known practice task');
+      if (app.$$('.opt').length) app.$(`.opt[data-i="${q.a}"]`).click();
+      else if (app.$('.bank')) q.a.forEach((tok) => app.$$('.bank .tok').find((x) => !x.disabled && x.textContent === tok).click());
+      else T.typeText(app, q.a[0]);
+      btn(app).click(); await press(app);
+    }
+    assert(app.$('.finish'), 'finish screen');
+    const p = app.stored().prog.js;
+    assert.eq(p.ans, n, 'cards are not answers'); assert.eq(p.ok, n, 'all ok');
+    assert.eq(p.best[0], 100, 'best 100 from scored tasks');
+  });
+
+  test('teach/edge: Guide with fewer TEACH lessons than the course skips the missing ones, no crash', async () => {
+    assert(window.COURSES.find((c) => c.id === 'js').lessons.length > 2, 'js has more than 2 lessons');
+    for (const teach of [{ js: [[A]] }, { js: [undefined, [A]] }, { js: [[], null, [B]] }]) {
+      const app = await T.loadApp({ state: OFF, teach });
+      app.$('.course[data-id="js"]').click(); app.$('[data-act="guide"]').click();
+      assert.eq(app.$('#screen').dataset.view, 'guide', 'guide opened');
+      const n = teach.js.filter((x) => Array.isArray(x) && x.length).length;
+      assert.eq(app.$$('.gles').length, n, 'only lessons with cards are listed');
+      assert(!app.$('.gempty'), 'not the empty state when some cards exist');
+    }
+    const app = await T.loadApp({ state: OFF, teach: { js: [] } });
+    app.$('.course[data-id="js"]').click(); app.$('[data-act="guide"]').click();
+    assert.eq(app.$('.gempty').textContent, app.win.I18N.en.guideEmpty, 'empty state');
+  });
+
+  test('teach/edge: Guide → Back → lesson → quit keeps the course screen consistent', async () => {
+    const app = await T.loadApp({ state: OFF, teach: FIX });
+    const scr = app.$('#screen');
+    app.$('.course[data-id="js"]').click();
+    app.$('[data-act="guide"]').click();
+    assert(!app.$('.lesson-item'), 'no lesson buttons inside the Guide');
+    app.$('[data-act="back"]').click();
+    assert.eq(scr.dataset.view, 'course', 'course after Back');
+    app.$('.lesson-item[data-i="0"]').click();
+    assert(!app.$('#lesson').hidden, 'lesson open');
+    app.$('[data-act="quit"]').click();
+    assert(app.$('#lesson').hidden, 'lesson closed');
+    assert.eq(scr.dataset.view, 'course', 'still the course screen');
+    assert(app.$('[data-act="guide"]') && app.$$('.lesson-item').length > 1, 'course screen intact');
+    app.$('[data-act="guide"]').click();
+    assert.eq(app.$$('.gcard').length, 3, 'Guide still lists all cards after a lesson');
+    app.$('[data-act="back"]').click(); app.$('[data-act="back"]').click();
+    assert.eq(scr.dataset.view, 'learn', 'Back, Back → courses');
+  });
+
+  test('teach/edge: music starts at lesson start even when the first item is a card; stops on quit', async () => {
+    const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: true } }, teach: FIX });
+    const M = app.win.CLMusic; let starts = 0, stops = 0;
+    const s0 = M.start.bind(M), p0 = M.stop.bind(M);
+    M.start = () => { starts++; return s0(); }; M.stop = () => { stops++; return p0(); };
+    open(app);
+    assert(isTeach(app), 'first item is a card');
+    assert.eq(starts, 1, 'music.start called once on the lesson tap');
+    await press(app);
+    assert.eq(starts, 1, 'no restart between items');
+    app.$('[data-act="quit"]').click();
+    assert(stops >= 1, 'stopped on quit');
+  });
+
+  test('data: teach — every r code in all real teach files is typeable and accepted', async () => {
+    const app = await T.loadApp({ state: OFF, teach: 'real' });
+    const { KBD, isCorrect } = app.win.__codelingo;
+    const keys = new Set(Object.values(KBD).flat().flat().filter((k) => k.length === 1));
+    const k = collector(); let n = 0;
+    Object.entries(window.TEACH || {}).forEach(([id, lessons]) => (lessons || []).forEach((cards, li) => (cards || []).forEach((cd, ci) => {
+      n++;
+      const w = `${id} L${li + 1} K${ci + 1}`;
+      const bad = [...cd.code].filter((ch) => !(ch === ' ' || /[a-z]/i.test(ch) || keys.has(ch)));
+      k.check(!bad.length, `${w}: untypeable ${JSON.stringify(bad.join(''))}`);
+      k.check(isCorrect({ t: 'r', a: [cd.code] }, id, cd.code), `${w}: own code rejected`);
+      k.check(!isCorrect({ t: 'r', a: [cd.code] }, id, ''), `${w}: empty accepted`);
+    })));
+    k.check(n >= 200, `expected ~237 cards, found ${n}`);
+    k.done();
+  });
 })();
