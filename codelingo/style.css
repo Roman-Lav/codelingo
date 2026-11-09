@@ -90,16 +90,12 @@ h1 { font-size: var(--fs-title); }
 .card { display: block; width: 100%; text-align: center; background: var(--surface); border: 2px solid var(--line); box-shadow: var(--shadow); padding: var(--gap); }
 button.card:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: none; }
 .grid { flex: 1 0 auto; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(96px, 1fr); gap: var(--gap); }
-.course { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.course { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
 .cname { font-weight: 600; overflow-wrap: normal; word-break: keep-all; hyphens: none; }
-/* Tall cards from 360px: badge and name at title size so the card does not look hollow (R9 sizes only). */
-@media (min-width: 360px) {
-  .course { gap: 16px; }
-  .course .badge { font-size: var(--fs-title); padding: 8px 16px; }
-  .course .cname { font-size: var(--fs-title); }
-}
 .cdone { position: absolute; top: 8px; right: 8px; width: 16px; height: 16px; }
-.badge { display: inline-block; background: var(--accent); color: var(--accent-ink); font: 600 var(--fs-caption)/1 var(--sans); padding: 4px 8px; border: 2px solid var(--line); }
+/* One badge role (R9): the same 17/600 and padding on the Learn tile and in the course header, at every width.
+   22px does not fit "JavaScript" in a 320px tile with the R10 16px card padding. */
+.badge { display: inline-block; background: var(--accent); color: var(--accent-ink); font: 600 var(--fs-body)/1 var(--sans); padding: 8px 16px; border: 2px solid var(--line); }
 .bar { height: 16px; border: 2px solid var(--line); background: var(--bg); overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s steps(5); }
 

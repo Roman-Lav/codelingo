@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.7';
+  const VERSION = '1.0.8';
   const KEY = 'codelingo.v1';
   const LANGS = ['en', 'ru', 'uk', 'cs'];
   const LANG_NAMES = { en: 'English', ru: 'Русский', uk: 'Українська', cs: 'Čeština' };
@@ -298,6 +298,19 @@
   /* ---------- Lesson ---------- */
   let LS = null;
 
+  // Music fallback after a refused resume: at most one pending pointerdown listener.
+  let tapRetry = false;
+  const musicWanted = () => !!(LS && !LS.finished && S.settings.music && document.visibilityState === 'visible');
+  function onRetryTap() {
+    clearTapRetry();
+    if (musicWanted()) music.start();
+  }
+  function clearTapRetry() {
+    if (!tapRetry) return;
+    tapRetry = false;
+    $('#lesson').removeEventListener('pointerdown', onRetryTap);
+  }
+
   function startLesson(cid, li) {
     const c = COURSES.find((x) => x.id === cid);
     const lesson = c.lessons[li];
@@ -457,7 +470,7 @@
 
   function finishLesson() {
     LS.finished = true;
-    music.stop();
+    music.stop(); clearTapRetry();
     const p = prog(LS.c.id);
     if (!p.done.includes(LS.li)) p.done.push(LS.li);
     const acc = LS.ans ? Math.round((100 * LS.ok) / LS.ans) : 0;
@@ -478,7 +491,7 @@
   function exitLesson(force) {
     if (!force && LS && !LS.finished && LS.ans > 0 && !window.confirm(t('quitQ'))) return;
     LS = null;
-    music.stop();
+    music.stop(); clearTapRetry();
     hideBubble();
     $('#lesson').hidden = true;
     document.body.classList.remove('in-lesson');
@@ -643,12 +656,12 @@
   // R11: no music while the app is in the background; resume only inside an open lesson.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') { music.stop(); return; }
-    const inLesson = () => LS && !LS.finished && S.settings.music && document.visibilityState === 'visible';
-    if (!inLesson()) return;
+    if (!musicWanted()) return;
     music.resume().then((running) => {
       // iOS may refuse to resume audio without a gesture: the next tap in the lesson restarts it.
-      if (running || !inLesson()) return;
-      $('#lesson').addEventListener('pointerdown', () => { if (inLesson()) music.start(); }, { once: true });
+      if (running || !musicWanted() || tapRetry) return;
+      tapRetry = true;
+      $('#lesson').addEventListener('pointerdown', onRetryTap);
     });
   });
 

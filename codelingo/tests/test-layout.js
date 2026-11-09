@@ -248,8 +248,13 @@
         c.check(px(cs(app.$('.klist')).rowGap) === 24, `${l} profile section gap ${cs(app.$('.klist')).rowGap}`);
         app.$$('.krow').forEach((r) => c.check(cs(r).boxShadow === 'none', 'static row has a shadow'));
       }
-      app.$('.tab[data-tab="learn"]').click(); app.$('.course[data-id="js"]').click();
+      app.$('.tab[data-tab="learn"]').click();
+      const look = (el) => ['fontSize', 'fontWeight', 'fontFamily', 'paddingTop', 'paddingLeft', 'lineHeight'].map((k) => cs(el)[k]).join('|');
+      const tileBadge = look(app.$('.course[data-id="js"] .badge'));
+      app.$('.course[data-id="js"]').click();
       const head = app.$('.course-head');
+      c.check(look(head.querySelector('.badge')) === tileBadge, `badge differs: tile ${tileBadge} vs header ${look(head.querySelector('.badge'))}`);
+      c.check(['17px|600', '22px|600'].includes(tileBadge.split('|').slice(0, 2).join('|')), 'badge size/weight ' + tileBadge);
       c.check(px(cs(head).marginBottom) === 24, `course head section gap ${cs(head).marginBottom}`);
       c.check(px(cs(app.$('.list')).rowGap) === 16, 'lesson gap');
       // one shadow value on every element in the app (inset glow excluded)
