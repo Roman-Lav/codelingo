@@ -19,3 +19,12 @@ function W(q, a, code) { return { t: 'w', q, a, c: code || '' }; }
 function O(q, a, d) { return { t: 'o', q, a, d: d || [] }; }
 function L(title, tasks) { return { title, tasks }; }
 function C(id, name, tag, lessons) { window.COURSES.push({ id, name, tag, lessons }); }
+
+// Teaching cards (Duolingo-style "new concept" screens) live in courses/teach-<id>.js.
+// Teach(id, lessons): lessons[i] is the list of cards for lesson i (same order as the course's lessons).
+// K(title, text, code): title and text are translatable ("en§ru§uk§cs"); code is the example the learner
+// will be asked to repeat (typed on the in-app keyboard), so keep it short — one line, max ~40 chars,
+// using only characters from the keyboard layers. The same cards build the course Guide.
+window.TEACH = {};
+function K(title, text, code) { return { title, text, code }; }
+function Teach(id, lessons) { window.TEACH[id] = lessons; }
