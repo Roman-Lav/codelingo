@@ -33,6 +33,36 @@
     return { win, doc, $: (s) => doc.querySelector(s), $$: (s) => [...doc.querySelectorAll(s)], stored: () => JSON.parse(localStorage.getItem(KEY)) };
   };
 
+  // R13 keyboard driver: every typed answer goes through #kbd with pointer events, like a finger.
+  let pid = 1;
+  T.keyEl = (app, k) => app.$(`#kbd .key[data-k="${app.win.CSS.escape(k)}"]`);
+  T.down = (app, el, id = pid++) => { el.dispatchEvent(new app.win.PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: id, pointerType: 'touch', isPrimary: true })); return id; };
+  T.up = (app, el, id) => el.dispatchEvent(new app.win.PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: id, pointerType: 'touch' }));
+  T.tapKey = (app, k) => { const el = T.keyEl(app, k); assert(el, `key "${k}" not on layer ${app.$('#kbd').dataset.layer}`); const id = T.down(app, el); T.up(app, el, id); };
+  T.layer = (app, want) => {
+    for (let i = 0; i < 3 && app.$('#kbd').dataset.layer !== want; i++) {
+      T.tapKey(app, T.keyEl(app, 'L:' + want) ? 'L:' + want : (app.$('#kbd').dataset.layer === 'abc' ? 'L:num' : 'L:abc'));
+    }
+    assert.eq(app.$('#kbd').dataset.layer, want, 'layer');
+  };
+  T.typeText = (app, str) => {
+    const KBD = app.win.__codelingo.KBD;
+    for (const ch of str) {
+      if (ch === '\n') { T.tapKey(app, 'enter'); continue; }
+      if (ch === ' ') { T.tapKey(app, 'space'); continue; }
+      if (/[a-z]/i.test(ch)) {
+        T.layer(app, 'abc');
+        if (ch !== ch.toLowerCase() && app.$('#kbd').dataset.shift === '0') T.tapKey(app, 'shift');
+        if (ch === ch.toLowerCase() && app.$('#kbd').dataset.shift !== '0') { T.tapKey(app, 'shift'); if (app.$('#kbd').dataset.shift !== '0') T.tapKey(app, 'shift'); }
+        T.tapKey(app, ch.toLowerCase()); continue;
+      }
+      const L = ['num', 'sym'].find((l) => KBD[l].some((row) => row.includes(ch)));
+      assert(L, `character ${JSON.stringify(ch)} is not on the keyboard`);
+      T.layer(app, L); T.tapKey(app, ch);
+    }
+  };
+  T.edText = (app) => [...app.$$('#ans .et')].map((e) => e.textContent).join('');
+
   // Answer the current task correctly (or deliberately wrong) through the UI.
   function answer(app, ok) {
     const { win, $, $$ } = app;
@@ -48,9 +78,8 @@
       seq.forEach((tok) => { const b = $$('.bank .tok').find((x) => !x.disabled && x.textContent === tok); assert(b, `token "${tok}" not in bank`); b.click(); });
     } else {
       const task = currentTask(app);
-      const el = $('#ans'); assert(el, 'no input in ' + lessonBody.innerHTML.slice(0, 80));
-      el.value = ok ? task.a[0] : 'zzz_wrong';
-      el.dispatchEvent(new win.Event('input', { bubbles: true }));
+      assert($('#ans') && !$('#kbd').hidden, 'no editor/keyboard in ' + lessonBody.innerHTML.slice(0, 80));
+      T.typeText(app, ok ? task.a[0] : 'zzz_wrong');
     }
     const btn = $('#checkBtn');
     assert(!btn.disabled, 'Check button disabled after answering');
@@ -487,7 +516,7 @@
         for (let i = 0; i < 3; i++) app.$('#lmascot').click(); // three hints: the longest prefix
         const b = app.$('#bubble');
         c.check(!b.hidden && b.textContent.includes('QQSECR'), `${task.t}: precondition, hint shows the prefix: "${b.textContent}"`);
-        const el = app.$('#ans'); el.value = 'nope'; el.dispatchEvent(new app.win.Event('input', { bubbles: true }));
+        T.typeText(app, 'nope');
         app.$('#checkBtn').click();
         c.check(app.$('#sheet').classList.contains('bad'), `${task.t}: wrong sheet`);
         c.check(app.$('#bubble').hidden, `${task.t}: bubble still visible after Check`);
@@ -525,7 +554,7 @@
       quit();
       for (const [kind, task] of [['fill', { t: 'f', q: 'Fill', c: 'v = ___', a: ['QQ_RIGHT'] }], ['write', { t: 'w', q: 'Write', a: ['QQ_RIGHT()'] }]]) {
         set(task); open();
-        const el = app.$('#ans'); el.value = 'nope'; el.dispatchEvent(new app.win.Event('input', { bubbles: true }));
+        T.typeText(app, 'nope');
         app.$('#checkBtn').click();
         sheetOk(kind, 'QQ_RIGHT');
         quit();
@@ -624,25 +653,28 @@
     assert.eq(app.win.CLMusic.context().state, 'running', 'the done jingle resumed the context after music.stop()');
   });
 
-  test('app: typed tasks — symbol bar docked on the footer, textarea fills the height, hidden after Check', async () => {
+  test('app: typed tasks — keyboard docked under Check, editor fills the height, hidden after Check', async () => {
     const app = await T.loadApp();
     const c = window.COURSES.find((x) => x.lessons[0].tasks.some((tk) => tk.t === 'w'));
     assert(c, 'a course with a write task in lesson 1');
     await openLesson(app, c.id, 0);
-    assert(app.$('#symdock').hidden, 'no symbol bar on a non-typed task') ;
-    for (let i = 0; i < lessonCtx.tasks.length && !app.$('textarea#ans'); i++) { answer(app, true); await cont(app); }
-    const ta = app.$('textarea#ans'); assert(ta, 'write task reached');
-    const dock = app.$('#symdock');
-    assert(!dock.hidden && dock.querySelector('.symbar'), 'symbol bar in the dock');
-    assert(!app.$('#lessonBody .symbar'), 'not inside the scrolling body');
-    const dr = dock.getBoundingClientRect(), fr = app.$('.lfoot').getBoundingClientRect();
-    assert(Math.abs(fr.top - dr.bottom) <= 1, `dock ${dr.bottom} vs footer ${fr.top}`);
+    for (let i = 0; i < lessonCtx.tasks.length && !app.$('.write#ans'); i++) {
+      const typed = !!app.$('#ans');
+      assert.eq(app.$('#kbd').hidden, !typed, 'keyboard only on typed tasks');
+      answer(app, true); await cont(app);
+    }
+    const ed = app.$('.write#ans'); assert(ed, 'write task reached');
+    const kbd = app.$('#kbd');
+    assert(!kbd.hidden && kbd.querySelectorAll('.key').length > 20, 'keyboard shown from task open');
+    const kr = kbd.getBoundingClientRect(), fr = app.$('.lfoot').getBoundingClientRect();
+    assert(Math.abs(fr.bottom - kr.top) <= 1, `Check footer sits on the keyboard: ${fr.bottom} vs ${kr.top}`);
+    assert(Math.abs(kr.bottom - app.win.innerHeight) <= 1, 'keyboard at the bottom of the screen');
     const body = app.$('#lessonBody'); const br = body.getBoundingClientRect();
     const pad = parseFloat(app.win.getComputedStyle(body).paddingBottom);
-    assert(Math.abs(br.bottom - pad - ta.getBoundingClientRect().bottom) <= 1, 'textarea fills to the bottom of the body');
-    assert(ta.getBoundingClientRect().height >= 140, 'min height kept');
+    if (body.scrollHeight <= body.clientHeight + 1) assert(Math.abs(br.bottom - pad - ed.getBoundingClientRect().bottom) <= 1, 'editor fills to the bottom of the body');
+    assert(ed.getBoundingClientRect().height >= 140, 'min height kept');
     answer(app, true);
-    assert(dock.hidden, 'symbol bar hidden after Check');
+    assert(kbd.hidden && !app.$('#lesson').classList.contains('kbd-on'), 'keyboard hidden after Check');
   });
 
   test('app: passed lesson row announces "Completed"; settings show only "CodeLingo · version"', async () => {
@@ -699,39 +731,6 @@
     assert(!/NaN|undefined/.test(app.$('#screen').textContent), 'no NaN/undefined in profile');
   });
 
-  // Symbol bar: synthetic touch events with touches/changedTouches defined explicitly.
-  function touch(app, el, type, x, y) {
-    const ev = new app.win.Event(type, { bubbles: true, cancelable: true });
-    const pt = [{ clientX: x, clientY: y, target: el }];
-    Object.defineProperty(ev, 'touches', { value: type === 'touchend' ? [] : pt });
-    Object.defineProperty(ev, 'changedTouches', { value: pt });
-    el.dispatchEvent(ev);
-    return ev;
-  }
-
-  test('app: swiping the symbol bar does not insert; a tap does', async () => {
-    const app = await T.loadApp();
-    const c = window.COURSES.find((x) => x.lessons[0].tasks.some((tk) => tk.t === 'f' || tk.t === 'w'));
-    assert(c, 'a course whose lesson 1 has a typed task');
-    await openLesson(app, c.id, 0);
-    for (let i = 0; i < lessonCtx.tasks.length && !app.$('#ans'); i++) { answer(app, true); await cont(app); }
-    const ans = app.$('#ans'); assert(ans, 'typed task reached');
-    const sym = app.$$('.sym').find((b) => b.dataset.ins !== 'Tab'); assert(sym, 'symbol button');
-    ans.value = ''; ans.focus();
-    touch(app, sym, 'touchstart', 100, 20);
-    const swipe = touch(app, sym, 'touchend', 130, 20);
-    assert.eq(ans.value, '', 'horizontal swipe must not insert');
-    assert(!swipe.defaultPrevented, 'swipe must not preventDefault');
-    touch(app, sym, 'touchstart', 100, 20);
-    const vSwipe = touch(app, sym, 'touchend', 100, 45);
-    assert.eq(ans.value, '', 'vertical swipe must not insert');
-    assert(!vSwipe.defaultPrevented, 'vertical swipe must not preventDefault');
-    touch(app, sym, 'touchstart', 100, 20);
-    const tap = touch(app, sym, 'touchend', 104, 22);
-    assert.eq(ans.value, sym.dataset.ins, 'tap inserts the symbol');
-    assert(tap.defaultPrevented, 'tap calls preventDefault (keyboard stays open)');
-  });
-
   test('app: no element wider than an iPhone SE screen (320px) on any tab', async () => {
     const app = await T.loadApp();
     frame.style.width = '320px';
@@ -750,6 +749,7 @@
     const small = [];
     const scan = (where) => app.$$('button, select, label.sw').forEach((b) => {
       const r = b.getBoundingClientRect();
+      if (b.matches('#kbd .key')) { if (r.height && r.height < 42) small.push(`${where}: key "${b.dataset.k}" height ${r.height}`); return; } // R13: keys >= 42px tall, R4 exception for width
       if (r.width && r.height && (r.width < 44 || r.height < 44)) small.push(`${where}: ${b.className || b.tagName} "${b.textContent.trim().slice(0, 12)}" ${Math.round(r.width)}×${Math.round(r.height)}`);
     });
     scan('home');
@@ -760,59 +760,4 @@
     assert(!uniq.length, uniq.length + ' small targets:\n    - ' + uniq.slice(0, 15).join('\n    - '));
   });
 
-  // --- Edge cases: touch without touchstart, multitouch ---
-  function touchMulti(app, el, type, touches, changed) {
-    const ev = new app.win.Event(type, { bubbles: true, cancelable: true });
-    Object.defineProperty(ev, 'touches', { value: touches });
-    Object.defineProperty(ev, 'changedTouches', { value: changed });
-    el.dispatchEvent(ev);
-    return ev;
-  }
-  async function openTyped(app) {
-    const c = window.COURSES.find((x) => x.lessons[0].tasks.some((tk) => tk.t === 'f' || tk.t === 'w'));
-    await openLesson(app, c.id, 0);
-    for (let i = 0; i < lessonCtx.tasks.length && !app.$('#ans'); i++) { answer(app, true); await cont(app); }
-    const ans = app.$('#ans'); assert(ans, 'typed task reached');
-    const sym = app.$$('.sym').find((b) => b.dataset.ins !== 'Tab'); assert(sym, 'symbol button');
-    ans.value = ''; ans.focus();
-    return { ans, sym };
-  }
-
-  test('app: touchend on .sym without touchstart acts as a tap, no exception', async () => {
-    const app = await T.loadApp();
-    const errs = []; app.win.addEventListener('error', (e) => errs.push(String(e.message)));
-    const { ans, sym } = await openTyped(app);
-    const ev = touchMulti(app, sym, 'touchend', [], [{ clientX: 50, clientY: 50, target: sym }]);
-    assert.eq(ans.value, sym.dataset.ins, 'inserted');
-    assert(ev.defaultPrevented, 'preventDefault');
-    const ev2 = touchMulti(app, sym, 'touchend', [], []); // empty changedTouches
-    assert.eq(ans.value, sym.dataset.ins + sym.dataset.ins, 'inserted with empty changedTouches');
-    assert(ev2.defaultPrevented, 'preventDefault (2)');
-    assert.eq(errs.length, 0, 'errors: ' + errs.join('; '));
-  });
-
-  test('app: multitouch — second finger elsewhere must not turn a swipe on .sym into an insert', async () => {
-    const app = await T.loadApp();
-    const { ans, sym } = await openTyped(app);
-    const other = app.$('#ans');
-    const A0 = { identifier: 0, clientX: 100, clientY: 20, target: sym };
-    const B0 = { identifier: 1, clientX: 200, clientY: 300, target: other };
-    touchMulti(app, sym, 'touchstart', [A0], [A0]);
-    touchMulti(app, other, 'touchstart', [A0, B0], [B0]);
-    const A1 = { identifier: 0, clientX: 160, clientY: 20, target: sym };
-    touchMulti(app, sym, 'touchend', [B0], [A1]);
-    assert.eq(ans.value, '', 'swipe by finger A (60px) must not insert');
-  });
-
-  test('app: multitouch — tap on .sym while another finger rests elsewhere inserts', async () => {
-    const app = await T.loadApp();
-    const { ans, sym } = await openTyped(app);
-    const other = app.$('#ans');
-    const A0 = { identifier: 0, clientX: 200, clientY: 300, target: other };
-    const B0 = { identifier: 1, clientX: 100, clientY: 20, target: sym };
-    touchMulti(app, other, 'touchstart', [A0], [A0]);
-    touchMulti(app, sym, 'touchstart', [A0, B0], [B0]);
-    touchMulti(app, sym, 'touchend', [A0], [{ ...B0, clientX: 102 }]);
-    assert.eq(ans.value, sym.dataset.ins, 'tap by finger B must insert');
-  });
 })();

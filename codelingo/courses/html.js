@@ -1,4 +1,4 @@
-C('html', 'HTML', '</>', ['<', '>', '/', '=', '"', '!', '-', 'Tab'], [
+C('html', 'HTML', '</>', [
   L('Tags§Теги§Теги§Tagy', [
     M('What does HTML stand for?§Как расшифровывается HTML?§Як розшифровується HTML?§Co znamená zkratka HTML?', '', ['HyperText Markup Language', 'High Tech Modern Language', 'Home Tool Markup Language', 'Hyperlink Text Mode Language']),
     M('Which tag makes a paragraph?§Какой тег создаёт абзац?§Який тег створює абзац?§Který tag vytváří odstavec?', '', ['<p>', '<para>', '<text>', '<pg>']),

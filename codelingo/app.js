@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.12';
+  const VERSION = '1.0.13';
   const KEY = 'codelingo.v1';
   const LANGS = ['en', 'ru', 'uk', 'cs'];
   const LANG_NAMES = { en: 'English', ru: 'Русский', uk: 'Українська', cs: 'Čeština' };
@@ -131,6 +131,7 @@
     ok: [[660, 0.08, 0], [990, 0.12, 0.08]],
     bad: [[196, 0.16, 0], [147, 0.22, 0.12]],
     done: [[523, 0.1, 0], [659, 0.1, 0.1], [784, 0.1, 0.2], [1046, 0.22, 0.3]],
+    key: [[440, 0.018, 0, 0.015, 'triangle']], // R13: soft, very short key click
   };
   function beep(name) {
     if (!S.settings.sound) return;
@@ -140,10 +141,10 @@
       ac = ac || (music.context && music.context()) || new (window.AudioContext || window.webkitAudioContext)();
       if (ac.resume) { const p = ac.resume(); if (p && p.catch) p.catch(() => {}); }
       const t0 = ac.currentTime + 0.01;
-      SND[name].forEach(([f, d, st]) => {
+      SND[name].forEach(([f, d, st, vol = 0.05, type = 'square']) => {
         const o = ac.createOscillator(); const g = ac.createGain();
-        o.type = 'square'; o.frequency.value = f;
-        g.gain.setValueAtTime(0.05, t0 + st);
+        o.type = type; o.frequency.value = f;
+        g.gain.setValueAtTime(vol, t0 + st);
         g.gain.exponentialRampToValueAtTime(0.0001, t0 + st + d);
         o.connect(g); g.connect(ac.destination);
         o.start(t0 + st); o.stop(t0 + st + d + 0.02);
@@ -200,6 +201,7 @@
     const dark = S.settings.theme === 'dark' || (S.settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     const meta = $('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', dark ? '#17110B' : '#F7F4EF');
+    const kbd = $('#kbd'); if (kbd) kbd.setAttribute('aria-label', t('kbd'));
   }
 
   /* ---------- Views ---------- */
@@ -334,7 +336,6 @@
     $('#lmascot').innerHTML = mascotSVG();
     document.body.classList.add('in-lesson');
     $('#lesson').hidden = false;
-    fitViewport();
     if (S.settings.music) music.start(); // started by the tap on the lesson (iOS needs a gesture)
     nextTask();
   }
@@ -344,7 +345,7 @@
     if (!LS.queue.length) return finishLesson();
     const ti = LS.queue[0];
     const task = LS.tasks[ti];
-    const cur = { ti, task, sel: null, picked: [], bank: null, perm: null, hints: 0, removed: new Set(), hl: -1, checked: false };
+    const cur = { ti, task, sel: null, picked: [], bank: null, perm: null, hints: 0, removed: new Set(), hl: -1, checked: false, text: '', caret: 0 };
     if (task.t === 'm') cur.perm = shuffle(task.o.map((_, i) => i));
     if (task.t === 'o') {
       const toks = task.a.concat(task.d).map((x) => ({ x }));
@@ -358,9 +359,6 @@
 
   const codeBlock = (code) => `<pre class="code"><code>${esc(code)}</code></pre>`;
 
-  function symbar() {
-    return `<div class="symbar">${LS.c.sym.map((s) => `<button class="sym" data-act="sym" data-ins="${esc(s)}">${s === 'Tab' ? '⇥' : esc(s)}</button>`).join('')}</div>`;
-  }
 
   function renderTask(fresh) {
     const { task, perm } = LS.cur;
@@ -379,10 +377,11 @@
     } else if (task.t === 'f') {
       const [a, b] = task.c.split('___');
       const w = Math.max(3, Math.max(...task.a.map((x) => x.length)) + 1);
-      h += `<pre class="code has-fill" data-act="fillfocus"><code>${esc(a)}<input id="ans" class="fill" style="width:${w + 1}ch" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">${esc(b)}</code></pre>`;
+      // R13: no native input; the custom editor sits where ___ was. A tap anywhere on the block places the caret.
+      h += `<pre class="code has-fill" data-act="edtap"><code>${esc(a)}<span id="ans" class="fill ed" role="textbox" aria-label="${esc(t('ansLabel'))}" aria-live="off" style="min-width:${w + 1}ch"></span>${esc(b)}</code></pre>`;
     } else if (task.t === 'w') {
       if (task.c) h += codeBlock(task.c);
-      h += `<textarea id="ans" class="write" rows="5" placeholder="${esc(t('typeCode'))}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>`;
+      h += `<div id="ans" class="write ed" role="textbox" aria-multiline="true" aria-label="${esc(t('ansLabel'))}" aria-live="off" data-act="edtap"></div>`;
     } else if (task.t === 'o') {
       h += `<div class="slot">${cur.picked.map((k, n) => `<button class="tok mono" data-act="untok" data-n="${n}">${esc(cur.bank[k].x)}</button>`).join('')}</div>
         <p class="small">${esc(t('tapTokens'))}</p>
@@ -393,12 +392,12 @@
     if (fresh || !typed) {
       body.innerHTML = h;
       if (fresh) body.scrollTop = 0;
-      body.classList.toggle('grow', task.t === 'w'); // the textarea takes the free height
+      body.classList.toggle('grow', task.t === 'w'); // the editor takes the free height
     }
-    // The symbol bar is docked right above the footer (and so above the iOS keyboard).
-    const dock = $('#symdock');
-    if (fresh) dock.innerHTML = typed ? symbar() : '';
-    dock.hidden = !typed || cur.checked;
+    if (typed) renderEditor();
+    // R13: the keyboard is docked under the Check footer for typed tasks until Check.
+    if (fresh) { kb.layer = 'abc'; kb.shift = 0; kb.shiftAt = 0; if (typed) renderKbd(); }
+    showKbd(typed && !cur.checked);
     $('#bar').firstElementChild.style.width = Math.round((100 * LS.done) / LS.total) + '%';
     if (fresh) {
       const sheet = $('#sheet'); sheet.hidden = true; sheet.className = 'sheet';
@@ -411,8 +410,7 @@
     const cur = LS.cur;
     if (cur.task.t === 'm') return cur.sel;
     if (cur.task.t === 'o') return cur.picked.map((k) => cur.bank[k].x);
-    const el = $('#ans');
-    return el ? el.value : '';
+    return cur.text; // R13: typed answers live in state, not in a DOM input
   }
   function canCheck() {
     const cur = LS.cur; if (!cur) return false;
@@ -444,7 +442,6 @@
       LS.wrong.add(cur.ti);
       LS.queue.push(LS.queue.shift());
     }
-    const el = $('#ans'); if (el) { el.readOnly = true; el.blur(); }
     hideBubble(); // a hint bubble may hold the start of the answer: never leave it next to the result
     renderTask(false);
     feedback(ok);
@@ -491,7 +488,7 @@
     save();
     $('#bar').firstElementChild.style.width = '100%';
     $('#sheet').hidden = true;
-    $('#symdock').hidden = true;
+    showKbd(false);
     $('#lessonBody').classList.remove('grow');
     $('#lessonBody').innerHTML = `<div class="finish">${mascotSVG('big jump')}
       <h2>${esc(t('lessonDone'))}</h2></div>`;
@@ -505,6 +502,7 @@
     LS = null;
     music.stop(); clearTapRetry();
     hideBubble();
+    showKbd(false);
     $('#lesson').hidden = true;
     document.body.classList.remove('in-lesson');
     render();
@@ -560,28 +558,168 @@
     }
   }
 
-  /* ---------- Input helpers ---------- */
-  function insertSym(btn) {
-    const el = $('#ans');
-    if (!el || el.readOnly) return;
-    let v = btn.dataset.ins;
-    if (v === 'Tab') v = LS && LS.c.id === 'py' ? '    ' : '  ';
-    const s = el.selectionStart ?? el.value.length; const e = el.selectionEnd ?? s;
-    el.setRangeText(v, s, e, 'end');
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.focus();
+  /* ---------- Custom editor and keyboard (R13) ---------- */
+  // No native input in lessons: the answer is cur.text with a caret cur.caret, edited only by #kbd
+  // (or a hardware keyboard). The system keyboard never opens.
+  const typedTask = (cur) => !!cur && (cur.task.t === 'f' || cur.task.t === 'w');
+  function renderEditor() {
+    const ed = $('#ans'); const cur = LS && LS.cur;
+    if (!ed || !typedTask(cur)) return;
+    const s = cur.text; const c = Math.max(0, Math.min(cur.caret, s.length)); cur.caret = c;
+    const caret = cur.checked ? '' : '<i class="caret" aria-hidden="true"></i>';
+    const ph = !s && cur.task.t === 'w' && !cur.checked ? `<span class="ph" aria-hidden="true">${esc(t('typeCode'))}</span>` : '';
+    // .eol keeps an empty last line (after a trailing newline) tall enough to show the caret.
+    ed.innerHTML = `<span class="et">${esc(s.slice(0, c))}</span>${caret}<span class="et">${esc(s.slice(c))}</span>${ph}<span class="eol" aria-hidden="true">​</span>`;
+    ed.setAttribute('aria-readonly', cur.checked ? 'true' : 'false');
+    const ci = $('.caret', ed);
+    if (ci && ci.scrollIntoView) ci.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+  function edit(fn) {
+    const cur = LS && LS.cur;
+    if (!typedTask(cur) || cur.checked) return;
+    fn(cur);
+    renderEditor();
+    $('#checkBtn').disabled = !canCheck();
+  }
+  const insertText = (v) => edit((c) => { c.text = c.text.slice(0, c.caret) + v + c.text.slice(c.caret); c.caret += v.length; });
+  const indent = () => (LS && LS.c.id === 'py' ? '    ' : '  ');
+
+  // Tap in the text: the caret goes to the nearest character; past the end (or outside the text) to the end.
+  function caretFromPoint(ed, x, y) {
+    const len = LS.cur.text.length;
+    const eol = $('.eol', ed);
+    if (eol) {
+      const r = eol.getBoundingClientRect();
+      if (y > r.bottom || (y >= r.top && x >= r.right)) return len;
+    }
+    let node = null; let off = 0;
+    if (document.caretPositionFromPoint) { const pos = document.caretPositionFromPoint(x, y); if (pos) { node = pos.offsetNode; off = pos.offset; } }
+    else if (document.caretRangeFromPoint) { const r = document.caretRangeFromPoint(x, y); if (r) { node = r.startContainer; off = r.startOffset; } }
+    let n = 0;
+    for (const sp of $$('.et', ed)) {
+      const tn = sp.firstChild;
+      if (node && (node === tn || node === sp)) return n + (node === sp ? (off ? sp.textContent.length : 0) : off);
+      n += sp.textContent.length;
+    }
+    return len;
+  }
+  function tapEditor(e) {
+    const cur = LS && LS.cur; const ed = $('#ans');
+    if (!typedTask(cur) || cur.checked || !ed) return;
+    const inEd = e.target.closest && e.target.closest('#ans');
+    cur.caret = inEd ? caretFromPoint(ed, e.clientX, e.clientY) : cur.text.length;
+    renderEditor();
   }
 
-  // R8: the lesson is pinned to the screen edges (position: fixed; inset: 0). Only while a native
-  // input in the lesson has focus (the keyboard is up) it follows the visual viewport; otherwise
-  // the inline height is cleared so the lesson never keeps a stale height (a band under it).
-  function fitViewport() {
-    const vv = window.visualViewport; const el = $('#lesson');
-    if (!el) return;
-    const a = document.activeElement;
-    const typing = !!vv && !el.hidden && !!a && el.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
-    el.style.height = typing ? vv.height + 'px' : '';
-    el.style.transform = typing && vv.offsetTop ? `translateY(${vv.offsetTop}px)` : '';
+  // Layout data. Letters only in English, no language switch (R13).
+  const KBD = {
+    abc: [['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'], ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'], ['shift', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'bksp']],
+    num: [['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '_'], ['(', ')', '{', '}', '[', ']', '<', '>', '=', '+', '-'], ['"', "'", ';', ':', '.', ',', '*', '/', '!', '?', '&', 'bksp']],
+    sym: [['`', '~', '|', '\\', '^', '%', '$', '#', '@'], ['(', ')', '{', '}', '[', ']', '<', '>', '='], ['"', "'", ';', ':', '.', ',', '_', 'bksp']],
+  };
+  const KBD_BOTTOM = {
+    abc: ['L:num', 'left', 'space', 'right', 'tab', 'enter'],
+    num: ['L:abc', 'L:sym', 'left', 'space', 'right', 'tab', 'enter'],
+    sym: ['L:abc', 'L:num', 'left', 'space', 'right', 'tab', 'enter'],
+  };
+  const KEY_LABEL = { 'L:num': '123', 'L:abc': 'ABC', 'L:sym': '#+=', left: '◀︎', right: '▶︎', space: '', tab: 'Tab', enter: '⏎', bksp: '⌫', shift: '⇧' };
+  const KEY_ARIA = { 'L:num': 'kNum', 'L:abc': 'kAbc', 'L:sym': 'kSym', left: 'kLeft', right: 'kRight', space: 'kSpace', tab: 'kTab', enter: 'kEnter', bksp: 'kBksp', shift: 'kShift' };
+  const REPEAT = new Set(['bksp', 'left', 'right']);
+  const kb = { layer: 'abc', shift: 0, shiftAt: 0 }; // shift: 0 off, 1 next letter, 2 caps lock
+  const isLetter = (k) => k.length === 1 && k >= 'a' && k <= 'z';
+
+  function keyHTML(k) {
+    const ch = k.length === 1;
+    const cls = ch ? 'key' : `key fn k-${k.replace(':', '-')}`;
+    const label = ch ? (isLetter(k) && kb.shift ? k.toUpperCase() : k) : KEY_LABEL[k];
+    const aria = ch ? '' : ` aria-label="${esc(t(k === 'enter' && LS && LS.cur && LS.cur.task.t === 'f' ? 'check' : KEY_ARIA[k]))}"`;
+    const pressed = k === 'shift' ? ` aria-pressed="${kb.shift ? 'true' : 'false'}"` : '';
+    return `<button type="button" class="${cls}" data-k="${esc(k)}"${aria}${pressed}>${esc(label)}</button>`;
+  }
+  function renderKbd() {
+    const el = $('#kbd');
+    el.innerHTML = KBD[kb.layer].concat([KBD_BOTTOM[kb.layer]]).map((row) => `<div class="kr">${row.map(keyHTML).join('')}</div>`).join('');
+    el.dataset.layer = kb.layer;
+    syncShift();
+  }
+  // Shift state without re-rendering the keys (a held key keeps its element).
+  function syncShift() {
+    const el = $('#kbd');
+    el.dataset.shift = String(kb.shift);
+    $$('.key', el).forEach((b) => { const k = b.dataset.k; if (isLetter(k)) b.textContent = kb.shift ? k.toUpperCase() : k; });
+    const sh = $('.k-shift', el);
+    if (sh) { sh.setAttribute('aria-pressed', kb.shift ? 'true' : 'false'); sh.setAttribute('aria-label', t(kb.shift === 2 ? 'kCaps' : 'kShift')); }
+  }
+  function showKbd(on) {
+    const el = $('#kbd'); if (!el) return;
+    el.hidden = !on;
+    $('#lesson').classList.toggle('kbd-on', on);
+    if (!on) releaseAll();
+  }
+  function pressKey(k) {
+    const cur = LS && LS.cur;
+    if (!typedTask(cur) || cur.checked) return;
+    if (k === 'enter' && cur.task.t === 'f') { check(); return; } // fill: Enter = Check (its own sound)
+    beep('key');
+    if (k.startsWith('L:')) { kb.layer = k.slice(2); renderKbd(); return; }
+    switch (k) {
+      case 'shift': {
+        const now = Date.now();
+        if (kb.shift === 2) kb.shift = 0;
+        else if (kb.shift === 1) kb.shift = now - kb.shiftAt < 300 ? 2 : 0; // double tap = caps lock
+        else kb.shift = 1;
+        kb.shiftAt = now; syncShift(); return;
+      }
+      case 'bksp': edit((c) => { if (c.caret > 0) { c.text = c.text.slice(0, c.caret - 1) + c.text.slice(c.caret); c.caret--; } }); return;
+      case 'left': edit((c) => { c.caret = Math.max(0, c.caret - 1); }); return;
+      case 'right': edit((c) => { c.caret = Math.min(c.text.length, c.caret + 1); }); return;
+      case 'space': insertText(' '); return;
+      case 'tab': insertText(indent()); return;
+      case 'enter': insertText('\n'); return; // write task: new line
+      default: {
+        let ch = k;
+        if (isLetter(k) && kb.shift) { ch = k.toUpperCase(); if (kb.shift === 1) { kb.shift = 0; syncShift(); } }
+        insertText(ch);
+      }
+    }
+  }
+  // pointerdown + preventDefault: no focus, no double-tap zoom, no ghost click. One entry per pointer,
+  // so several fingers are independent; a held repeat key (Backspace, arrows) repeats after 400 ms every 60 ms.
+  const held = new Map();
+  let lastPointerAt = 0;
+  function release(id) {
+    const h = held.get(id); if (!h) return;
+    clearTimeout(h.timer); h.key.classList.remove('down'); held.delete(id);
+  }
+  function releaseAll() { [...held.keys()].forEach(release); }
+  function onKeyDown(e) {
+    const key = e.target.closest && e.target.closest('.key');
+    if (!key) return;
+    e.preventDefault();
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    release(e.pointerId);
+    try { key.setPointerCapture(e.pointerId); } catch (err) { /* synthetic or finished pointer */ }
+    const k = key.dataset.k;
+    const h = { key, timer: 0 }; held.set(e.pointerId, h);
+    key.classList.add('down');
+    lastPointerAt = Date.now();
+    pressKey(k);
+    if (REPEAT.has(k)) {
+      const rep = () => { if (!held.has(e.pointerId) || $('#kbd').hidden) return; pressKey(k); h.timer = setTimeout(rep, 60); };
+      h.timer = setTimeout(rep, 400);
+    }
+  }
+  function bindKbd() {
+    const el = $('#kbd'); if (!el) return;
+    el.addEventListener('pointerdown', onKeyDown);
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => el.addEventListener(ev, (e) => release(e.pointerId)));
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Keyboard / switch-control activation arrives as a click without a pointer press before it.
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const key = e.target.closest('.key');
+      if (key && Date.now() - lastPointerAt > 800) pressKey(key.dataset.k);
+    });
   }
 
   /* ---------- Modal (R12): app-styled confirmation instead of window.confirm ---------- */
@@ -666,7 +804,7 @@
       case 'tab': tab = el.dataset.tab; courseId = null; render(); resetScroll(); break;
       case 'course': courseId = el.dataset.id; render(); resetScroll(); break;
       case 'back': courseId = null; render(); resetScroll(); break;
-      case 'fillfocus': { const inp = $('#ans', el); if (inp && !inp.readOnly && e.target !== inp) inp.focus(); break; }
+      case 'edtap': tapEditor(e); break;
       case 'lesson': startLesson(courseId, Number(el.dataset.i)); break;
       case 'mascot': if ($('#bubble').hidden) hint(); else { hideBubble(); if (LS) hint(); } break;
       case 'quit': exitLesson(false, el); break;
@@ -674,7 +812,6 @@
       case 'opt': if (!LS.cur.checked) { LS.cur.sel = Number(el.dataset.i); renderTask(false); } break;
       case 'tok': if (!LS.cur.checked) { const k = Number(el.dataset.k); LS.cur.picked.push(k); if (LS.cur.hl === k) LS.cur.hl = -1; renderTask(false); } break;
       case 'untok': if (!LS.cur.checked) { LS.cur.picked.splice(Number(el.dataset.n), 1); renderTask(false); } break;
-      case 'sym': insertSym(el); break;
       case 'cycle': {
         // Theme and language are one button each: a tap moves to the next value.
         const k = el.dataset.k; const list = k === 'theme' ? THEMES : LANGS;
@@ -690,36 +827,16 @@
     }
   });
 
-  // Keep the keyboard open when tapping the symbol bar on iOS.
-  // The bar scrolls horizontally: a swipe (>10px on any axis) must not insert a symbol.
-  // Track the finger that started on a .sym by its identifier, so other fingers don't interfere.
-  let symTouch = null;
-  const moved = (a, b) => Math.abs(b.clientX - a.x) > 10 || Math.abs(b.clientY - a.y) > 10;
-  document.addEventListener('touchstart', (e) => {
-    const t0 = e.changedTouches && e.changedTouches[0];
-    if (!t0 || !(e.target.closest && e.target.closest('.sym'))) return;
-    symTouch = { id: t0.identifier, x: t0.clientX, y: t0.clientY };
-  }, { passive: true });
-  document.addEventListener('touchcancel', () => { symTouch = null; }, { passive: true });
-  document.addEventListener('touchend', (e) => {
-    const start = symTouch;
-    const list = e.changedTouches ? [...e.changedTouches] : [];
-    const mine = start ? list.find((tt) => tt.identifier === start.id) : undefined;
-    if (mine) symTouch = null;
-    const b = e.target.closest && e.target.closest('.sym');
-    if (!b) return;
-    if (mine && moved(start, mine)) return; // swipe: let the bar scroll
-    // A tap, or a touchend without a known touchstart: insert as a tap.
-    e.preventDefault();
-    insertSym(b);
-  }, { passive: false });
-  document.addEventListener('mousedown', (e) => { if (e.target.closest('.sym')) e.preventDefault(); });
-
-  document.addEventListener('input', (e) => {
-    if (e.target.id === 'ans' && LS && LS.cur && !LS.cur.checked) $('#checkBtn').disabled = !canCheck();
-  });
+  // A hardware keyboard (desktop, iPad) types into the editor too. Tab is left to focus navigation,
+  // and keys go to a focused button (e.g. Check) as usual.
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && e.target.id === 'ans' && e.target.tagName === 'INPUT') { e.preventDefault(); check(); }
+    const cur = LS && LS.cur;
+    if (!typedTask(cur) || cur.checked || e.ctrlKey || e.metaKey || e.altKey || modalEl) return;
+    const a = document.activeElement;
+    if (a && a !== document.body && !(a.closest && a.closest('#kbd'))) return;
+    const map = { Backspace: 'bksp', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'enter' };
+    if (map[e.key]) { e.preventDefault(); pressKey(map[e.key]); return; }
+    if (e.key.length === 1) { e.preventDefault(); if (e.key === ' ') pressKey('space'); else if (cur && !cur.checked) insertText(e.key); }
   });
   document.addEventListener('change', (e) => {
     const k = e.target.dataset.set;
@@ -743,16 +860,10 @@
     });
   });
 
-  // The lesson follows the visual viewport only while its input is focused (keyboard up).
-  document.addEventListener('focusin', () => setTimeout(fitViewport, 0));
-  document.addEventListener('focusout', () => setTimeout(fitViewport, 0));
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', fitViewport);
-    window.visualViewport.addEventListener('scroll', fitViewport);
-  }
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applySettings);
 
   /* ---------- Boot ---------- */
+  bindKbd();
   load();
   applySettings();
   render();
@@ -762,5 +873,5 @@
   }
 
   // Exposed for automated checks only.
-  window.__codelingo = { norm, isCorrect, optText, sanitize, COURSES };
+  window.__codelingo = { norm, isCorrect, optText, sanitize, COURSES, KBD };
 })();

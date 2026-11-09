@@ -1,5 +1,5 @@
 // Tables used in tasks: users(id, name, age, city), orders(id, user_id, total)
-C('sql', 'SQL', 'SQL', ['*', ',', '(', ')', '=', "'", ';', '.', '%', '<', '>'], [
+C('sql', 'SQL', 'SQL', [
   L('SELECT§SELECT§SELECT§SELECT', [
     M('Which keyword reads data?§Каким словом читают данные?§Яким словом читають дані?§Kterým slovem se čtou data?', '', ['SELECT', 'GET', 'READ', 'FETCH']),
     W('Select all columns from users§Выберите все столбцы из users§Виберіть усі стовпці з users§Vyberte všechny sloupce z users', ['SELECT * FROM users']),

@@ -18,4 +18,4 @@ function W(q, a, code) { return { t: 'w', q, a, c: code || '' }; }
 // Order tokens; d = extra distractor tokens
 function O(q, a, d) { return { t: 'o', q, a, d: d || [] }; }
 function L(title, tasks) { return { title, tasks }; }
-function C(id, name, tag, sym, lessons) { window.COURSES.push({ id, name, tag, sym, lessons }); }
+function C(id, name, tag, lessons) { window.COURSES.push({ id, name, tag, lessons }); }

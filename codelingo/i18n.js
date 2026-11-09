@@ -1,5 +1,6 @@
 window.I18N = {
   en: {
+    ansLabel: 'Your answer', kbd: 'Keyboard', kShift: 'Shift', kCaps: 'Caps lock', kBksp: 'Delete', kSpace: 'Space', kTab: 'Tab', kEnter: 'New line', kLeft: 'Move left', kRight: 'Move right', kNum: 'Numbers and symbols', kAbc: 'Letters', kSym: 'More symbols',
     cancel: 'Cancel', quit: 'Quit', resetAct: 'Reset',
     learn: 'Learn', profile: 'Profile', settings: 'Settings',
     start: 'Start', back: 'Back',
@@ -19,6 +20,7 @@ window.I18N = {
     statLessons: 'Lessons done: {n}\u00a0of\u00a0{m}', pct: '{n}%', knowAria: 'Knowledge: {n}%', statAcc: 'Correct answers {p}% ({ok}\u00a0of\u00a0{ans})', statAccNone: 'Correct answers\u00a0—',
   },
   ru: {
+    ansLabel: 'Ваш ответ', kbd: 'Клавиатура', kShift: 'Shift', kCaps: 'Caps Lock', kBksp: 'Удалить', kSpace: 'Пробел', kTab: 'Tab', kEnter: 'Новая строка', kLeft: 'Курсор влево', kRight: 'Курсор вправо', kNum: 'Цифры и символы', kAbc: 'Буквы', kSym: 'Другие символы',
     cancel: 'Отмена', quit: 'Выйти', resetAct: 'Сбросить',
     learn: 'Учиться', profile: 'Профиль', settings: 'Настройки',
     start: 'Начать', back: 'Назад',
@@ -38,6 +40,7 @@ window.I18N = {
     statLessons: 'Пройдено уроков: {n}\u00a0из\u00a0{m}', pct: '{n}%', knowAria: 'Знания: {n}%', statAcc: 'Верных ответов {p}% ({ok}\u00a0из\u00a0{ans})', statAccNone: 'Верных ответов\u00a0—',
   },
   uk: {
+    ansLabel: 'Ваша відповідь', kbd: 'Клавіатура', kShift: 'Shift', kCaps: 'Caps Lock', kBksp: 'Видалити', kSpace: 'Пробіл', kTab: 'Tab', kEnter: 'Новий рядок', kLeft: 'Курсор ліворуч', kRight: 'Курсор праворуч', kNum: 'Цифри й символи', kAbc: 'Літери', kSym: 'Інші символи',
     cancel: 'Скасувати', quit: 'Вийти', resetAct: 'Скинути',
     learn: 'Навчання', profile: 'Профіль', settings: 'Налаштування',
     start: 'Почати', back: 'Назад',
@@ -57,6 +60,7 @@ window.I18N = {
     statLessons: 'Пройдено уроків: {n}\u00a0з\u00a0{m}', pct: '{n}%', knowAria: 'Знання: {n}%', statAcc: 'Правильних відповідей {p}% ({ok}\u00a0з\u00a0{ans})', statAccNone: 'Правильних відповідей\u00a0—',
   },
   cs: {
+    ansLabel: 'Vaše odpověď', kbd: 'Klávesnice', kShift: 'Shift', kCaps: 'Caps Lock', kBksp: 'Smazat', kSpace: 'Mezera', kTab: 'Tab', kEnter: 'Nový řádek', kLeft: 'Kurzor vlevo', kRight: 'Kurzor vpravo', kNum: 'Čísla a symboly', kAbc: 'Písmena', kSym: 'Další symboly',
     cancel: 'Zrušit', quit: 'Ukončit', resetAct: 'Smazat',
     learn: 'Učit se', profile: 'Profil', settings: 'Nastavení',
     start: 'Začít', back: 'Zpět',

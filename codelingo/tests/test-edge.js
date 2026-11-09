@@ -62,7 +62,7 @@
         seq.forEach((tok) => app.$$('.bank .tok').find((x) => !x.disabled && x.textContent === tok).click());
         if (bad && seq.join(' ') === task.a.join(' ')) throw new Error('cannot make a wrong order answer');
       } else {
-        const el = app.$('#ans'); el.value = bad ? 'zzz_wrong' : task.a[0]; el.dispatchEvent(new app.win.Event('input', { bubbles: true }));
+        T.typeText(app, bad ? 'zzz_wrong' : task.a[0]);
       }
       app.$('#checkBtn').click();
       await T.sleep(420); app.$('#checkBtn').click();
@@ -291,7 +291,7 @@
     const saved = L.tasks.map((t) => ({ ...t }));
     try {
       const mk = (a) => { L.tasks.forEach((t) => { Object.keys(t).forEach((k) => delete t[k]); Object.assign(t, { t: 'f', q: 'Fill', c: 'v = ___', a: [a] }); }); };
-      const type = (v) => { const el = app.$('#ans'); el.value = v; el.dispatchEvent(new app.win.Event('input', { bubbles: true })); app.$('#checkBtn').click(); return app.$('#sheet').classList.contains('ok'); };
+      const type = (v) => { T.typeText(app, v); app.$('#checkBtn').click(); return app.$('#sheet').classList.contains('ok'); };
       const tryOne = async (answer, input, expectOk) => {
         mk(answer);
         app.$('.course[data-id="js"]').click(); app.$('.lesson-item[data-i="0"]').click();
@@ -374,14 +374,15 @@
     assert(!M.playing, 'no music outside a lesson');
   });
 
-  test('edge: symbol dock is empty and hidden on a non-typed task and after exiting the lesson', async () => {
+  test('edge: keyboard hidden on a non-typed task and after exiting the lesson; no symbol bar', async () => {
     const app = await T.loadApp({ state: { settings: { lang: 'en', sound: false, music: false } } });
     open(app, 'js', 0);
-    const dock = app.$('#symdock');
+    const kbd = app.$('#kbd');
     assert(!app.$('#ans'), 'first task is not typed');
-    assert(dock.hidden && dock.innerHTML === '', 'dock empty+hidden on MCQ/order task');
+    assert(kbd.hidden, 'keyboard hidden on MCQ/order task');
+    assert(!app.$('#symdock') && !app.$('.sym, .symbar'), 'old symbol bar removed');
     app.$('[data-act="quit"]').click();
-    assert(app.$('#lesson').hidden && dock.hidden, 'dock hidden after exit');
+    assert(app.$('#lesson').hidden && kbd.hidden, 'keyboard hidden after exit');
   });
 
   test('edge: sound effects play with music off and share one AudioContext', async () => {
@@ -475,13 +476,13 @@
     const app = await T.loadApp();
     for (const task of [{ t: 'f', q: 'Fill', c: 'v = ___', a: ['QQSECRET7'] }, { t: 'w', q: 'Write', a: ['QQSECRET7()'] }]) {
       await withTask(app, task, async () => {
-        const el = app.$('#ans'); el.value = 'nope'; el.dispatchEvent(new app.win.Event('input', { bubbles: true }));
+        T.typeText(app, 'nope');
         app.$('#checkBtn').click();
         assert(app.$('#sheet').classList.contains('bad'), task.t + ': wrong sheet');
         const L = app.$('#lesson');
         assert(!L.textContent.includes('QQSECRET7'), task.t + ': text reveals answer');
         assert(!L.innerHTML.includes('QQSECRET7'), task.t + ': markup reveals answer');
-        assert(![...L.querySelectorAll('input,textarea')].some((i) => i.value.includes('QQSECRET7') || (i.placeholder || '').includes('QQSECRET7')), task.t + ': input reveals answer');
+        assert(!L.querySelector('input, textarea, [contenteditable]'), task.t + ': native input in the lesson');
       });
     }
   });

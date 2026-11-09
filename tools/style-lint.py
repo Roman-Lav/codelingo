@@ -67,7 +67,7 @@ def main():
 
     app = APP.read_text(encoding="utf-8")
     for m in re.finditer(r'style="([^"]*)"', app):
-        if not re.fullmatch(r"\s*width:\s*\$\{[^}]+\}(%|ch)?;?\s*", m.group(1)):
+        if not re.fullmatch(r"\s*(min-)?width:\s*\$\{[^}]+\}(%|ch)?;?\s*", m.group(1)):
             problems.append(("inline", f'app.js:{app[:m.start()].count(chr(10)) + 1} style="{m.group(1)}"'))
     for m in re.finditer(r"`[^`]*`", app, flags=re.S):
         tpl = m.group(0)

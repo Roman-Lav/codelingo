@@ -9,7 +9,7 @@
   function answerAny(app) {
     if (app.$$('.opt').length) app.$('.opt').click();
     else if (app.$('.bank')) app.$('.bank .tok').click();
-    else { const el = app.$('#ans'); el.value = 'x'; el.dispatchEvent(new app.win.Event('input', { bubbles: true })); }
+    else T.typeText(app, 'x');
     app.$('#checkBtn').click();
   }
   function openLesson(app, cid = 'js', li = 0) {
@@ -216,7 +216,7 @@
     });
   }
 
-  test('layout R8: lesson height follows the viewport only while an input is focused', async () => {
+  test('layout R8/R13: the lesson never gets an inline height (no native input, pinned with inset 0)', async () => {
     const app = await T.loadApp();
     const L = app.win.COURSES.find((cr) => cr.id === 'js').lessons[0];
     const saved = L.tasks.map((x) => ({ ...x }));
@@ -224,14 +224,10 @@
       L.tasks.forEach((x) => { Object.keys(x).forEach((k) => delete x[k]); Object.assign(x, { t: 'w', q: 'Write', a: ['ok()'] }); });
       openLesson(app);
       const el = app.$('#lesson');
-      assert.eq(el.style.height, '', 'no inline height before focus');
-      app.$('#ans').focus(); await sleep(20);
-      assert.eq(el.style.height, app.win.visualViewport.height + 'px', 'inline height = visual viewport while typing');
-      app.$('#ans').blur(); await sleep(20);
-      assert.eq(el.style.height, '', 'inline height cleared on blur');
-      app.$('#ans').focus(); await sleep(20);
-      app.$('[data-act="quit"]').click(); await sleep(20);
-      assert(el.hidden && el.style.height === '', 'cleared after closing the lesson');
+      T.typeText(app, 'ok'); await sleep(20);
+      assert.eq(el.style.height, '', 'no inline height while typing');
+      const r = el.getBoundingClientRect();
+      assert(r.top === 0 && Math.abs(r.bottom - app.win.innerHeight) <= 1, 'pinned to the edges');
     } finally { L.tasks.forEach((x, i) => { Object.keys(x).forEach((k) => delete x[k]); Object.assign(x, saved[i]); }); }
   });
 })();

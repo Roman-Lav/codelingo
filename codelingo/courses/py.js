@@ -1,4 +1,4 @@
-C('py', 'Python', 'PY', [':', '(', ')', '[', ']', '"', '=', '_', '#', '.', ',', 'Tab'], [
+C('py', 'Python', 'PY', [
   L('print & variables§print и переменные§print і змінні§print a proměnné', [
     W('Print Hello§Выведите Hello§Виведіть Hello§Vypište Hello', ['print("Hello")']),
     M(P.out, 'x = 3\ny = 4\nprint(x + y)', ['7', '34', 'x + y', 'Error']),

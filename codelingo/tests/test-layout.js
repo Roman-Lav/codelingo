@@ -91,13 +91,13 @@
     assert(task, 'cannot identify task');
     if ($$('.opt').length) $(`.opt[data-i="${task.a}"]`).click();
     else if ($('.bank')) task.a.forEach((tok) => $$('.bank .tok').find((x) => !x.disabled && x.textContent === tok).click());
-    else { const el = $('#ans'); el.value = task.a[0]; el.dispatchEvent(new win.Event('input', { bubbles: true })); }
+    else T.typeText(app, task.a[0]);
     $('#checkBtn').click();
   }
   const cont = async (app) => { await sleep(420); app.$('#checkBtn').click(); };
 
   // ---- R9 audit ----
-  const CODE_SEL = 'pre, code, .tok, .write, .fill, .opt.mono, .sym';
+  const CODE_SEL = 'pre, code, .tok, .write, .fill, .opt.mono';
   function audit(app, where, c, seen) {
     const { win, doc } = app;
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
@@ -291,7 +291,7 @@
     c.done();
   });
 
-  test('fill-in R7: tap on pre.code.has-fill (not on the input) focuses #ans', async () => {
+  test('fill-in R7/R13: a tap on pre.code.has-fill outside the blank puts the caret at the end; nothing gets focus', async () => {
     let found = 0;
     for (const course of window.COURSES) {
       const app = await T.loadApp();
@@ -301,12 +301,12 @@
         const pre = app.$('pre.code.has-fill');
         if (pre) {
           found++;
-          assert(app.doc.activeElement !== app.$('#ans'), 'precondition: not focused');
-          pre.click();
-          assert(app.doc.activeElement === app.$('#ans'), `${course.id} t${i + 1}: tap on pre did not focus #ans`);
-          app.doc.activeElement.blur();
-          app.$('pre.code.has-fill code').click();
-          assert(app.doc.activeElement === app.$('#ans'), `${course.id} t${i + 1}: tap on code did not focus #ans`);
+          T.typeText(app, 'ab'); T.tapKey(app, 'left'); T.tapKey(app, 'left');
+          assert.eq(app.$('#ans .et').textContent, '', 'caret moved to the start');
+          const r = pre.getBoundingClientRect();
+          pre.dispatchEvent(new app.win.MouseEvent('click', { bubbles: true, clientX: r.right - 4, clientY: r.bottom - 4 }));
+          assert.eq(app.$('#ans .et').textContent, 'ab', `${course.id} t${i + 1}: tap on pre did not put the caret at the end`);
+          assert(app.doc.activeElement === app.doc.body, 'nothing focused');
           break;
         }
         solve(app, lesson); await cont(app);

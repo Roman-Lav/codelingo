@@ -1,4 +1,4 @@
-C('css', 'CSS', '{ }', ['{', '}', ':', ';', '#', '.', '-', '(', ')', '%', 'Tab'], [
+C('css', 'CSS', '{ }', [
   L('Syntax§Синтаксис§Синтаксис§Syntaxe', [
     M('What does CSS control?§За что отвечает CSS?§За що відповідає CSS?§Co ovládá CSS?', '', ['~How the page looks§Внешний вид страницы§Зовнішній вигляд сторінки§Vzhled stránky', '~The database§Базу данных§Базу даних§Databázi', '~Server logic§Логику сервера§Логіку сервера§Logiku serveru', '~Only the page structure§Только структуру страницы§Лише структуру сторінки§Jen strukturu stránky']),
     F(P.fill, 'p ___ color: red; }', ['{']),

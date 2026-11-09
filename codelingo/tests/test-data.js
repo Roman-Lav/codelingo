@@ -12,7 +12,6 @@
     assert.eq(new Set(ids).size, ids.length, 'unique ids');
     C.forEach((c) => {
       assert(c.name && c.tag, `${c.id}: name/tag`);
-      assert(Array.isArray(c.sym) && c.sym.length > 0, `${c.id}: symbol bar`);
       assert(c.lessons.length > 0, `${c.id}: lessons`);
     });
   });

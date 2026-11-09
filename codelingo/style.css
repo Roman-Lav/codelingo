@@ -60,11 +60,11 @@ body {
 h1, h2, h3, b, strong { font-weight: 600; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; touch-action: manipulation; }
 /* R12: UI chrome is not selectable (no selection loupe); code blocks stay selectable. */
-button, .card, .course, .lesson-item, .opt, .tok, .sym, .symbar, .tabbar, .tab, .segbar, .week, .bar,
+button, .card, .course, .lesson-item, .opt, .tok, .kbd, .key, .ed, .tabbar, .tab, .segbar, .week, .bar,
 header.top, .course-head, .ltop, h1, h2, h3, .badge, .modal { -webkit-user-select: none; user-select: none; }
 pre.code, pre.code * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 /* Monospace only inside code (R9). */
-code, pre, .mono, .tok, .write, .fill, .opt.mono, .sym { font-family: var(--mono); }
+code, pre, .mono, .tok, .write, .fill, .opt.mono { font-family: var(--mono); }
 svg.pix rect { fill: currentColor; }
 .ic { width: 18px; height: 18px; display: block; }
 .ic.ok { color: var(--ok); }
@@ -193,18 +193,18 @@ pre.code { background: var(--code-bg); border: 2px solid var(--line); padding: 1
 .opt.wrong { background: var(--bad); color: var(--on-accent); border-color: var(--bad); }
 .opt:active { transform: translate(3px, 3px); box-shadow: none; }
 
+/* ---------- Custom editor (R13): not focusable, text lives in state; the caret is drawn ---------- */
 pre.code.has-fill { cursor: text; } /* the whole block is the tap target of the blank */
-.fill { font: inherit; font-size: max(16px, var(--code-size)); color: var(--ink); background: var(--surface); border: 0; border-bottom: 3px solid var(--accent); border-radius: 0; padding: 1px 4px; outline: none; vertical-align: baseline; -webkit-appearance: none; }
-.write { display: block; width: 100%; min-height: 140px; font-size: max(16px, var(--code-size)); line-height: 1.5; color: var(--ink); background: var(--surface); border: 2px solid var(--line); border-radius: 0; padding: 16px; resize: vertical; outline: none; -webkit-appearance: none; tab-size: 2; }
-.write:focus { border-color: var(--accent); }
-.lbody.grow { display: flex; flex-direction: column; } /* write task: the textarea fills the free height */
+.fill { display: inline-block; font: inherit; font-size: max(16px, var(--code-size)); color: var(--ink); background: var(--surface); border-bottom: 3px solid var(--accent); padding: 1px 4px; vertical-align: baseline; white-space: pre; cursor: text; }
+.write { display: block; width: 100%; min-height: 140px; font-size: max(16px, var(--code-size)); line-height: 1.5; color: var(--ink); background: var(--surface); border: 2px solid var(--line); padding: 16px; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; cursor: text; }
+.write[aria-readonly="false"] { border-color: var(--accent); } /* active editor, like a focused field */
+.ed .caret { display: inline-block; position: relative; width: 0; height: 1.2em; vertical-align: -.25em; pointer-events: none; }
+.ed .caret::after { content: ""; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: var(--accent); animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+.ed .ph { color: var(--muted); pointer-events: none; }
+.ed .eol { pointer-events: none; }
+.lbody.grow { display: flex; flex-direction: column; } /* write task: the editor fills the free height */
 .lbody.grow .write { flex: 1 0 auto; }
-.symdock { flex: none; width: 100%; max-width: 560px; margin: 0 auto; padding: 8px 16px 0; } /* docked above the footer */
-.symdock[hidden] { display: none; }
-.symbar { display: flex; gap: 8px; overflow-x: auto; padding: 0 4px 4px 0; scrollbar-width: none; }
-.symbar::-webkit-scrollbar { display: none; }
-.sym { flex: none; min-width: 44px; height: 44px; padding: 0 8px; border: 2px solid var(--line); background: var(--surface); font-size: max(16px, var(--code-size)); font-weight: 600; box-shadow: var(--shadow); }
-.sym:active { transform: translate(3px, 3px); box-shadow: none; }
 
 .slot { min-height: 64px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; padding: 8px 0; border-bottom: 2px dashed var(--line); margin-bottom: 8px; }
 .bank { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
@@ -221,6 +221,29 @@ pre.code.has-fill { cursor: text; } /* the whole block is the tap target of the 
 .sheet h3 svg { width: 20px; height: 20px; }
 .lfoot { padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
 .lfoot .btn { max-width: 528px; margin: 0 auto; }
+.lesson.kbd-on .lfoot { padding: 8px 16px; } /* the keyboard below takes the home-indicator inset */
+
+/* ---------- Keyboard (R13): docked under Check, keys stretch over the row ---------- */
+.kbd { flex: none; display: flex; flex-direction: column; gap: 4px; background: var(--code-bg); border-top: 2px solid var(--line);
+  padding: 8px max(4px, env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left)); touch-action: none; }
+.kbd[hidden] { display: none; }
+.kr { display: flex; gap: 4px; width: 100%; max-width: 760px; margin: 0 auto; }
+.key { flex: 1 1 0; min-width: 0; height: 44px; display: grid; place-items: center; padding: 0; background: var(--surface); color: var(--ink); border: 2px solid var(--line); box-shadow: var(--shadow); font: 400 var(--fs-body)/1 var(--sans); white-space: nowrap; overflow: hidden; }
+.key.fn { flex-grow: 1.5; font-size: var(--fs-caption); font-weight: 600; }
+.key.k-space { flex-grow: 4; }
+.key.down, .key:active { transform: translate(3px, 3px); box-shadow: none; background: var(--accent); color: var(--accent-ink); }
+.kbd[data-shift="1"] .k-shift { background: var(--accent); color: var(--accent-ink); } /* next letter upper case */
+.kbd[data-shift="2"] .k-shift { background: var(--ink); color: var(--bg); text-decoration: underline; } /* caps lock */
+
+/* Short screens (phone landscape): compact bars so the task and Check stay visible above the keyboard. */
+@media (max-height: 500px) {
+  .ltop { padding-top: 0; padding-bottom: 0; }
+  .lesson.kbd-on .lfoot { padding: 4px 16px; }
+  .lesson.kbd-on .lfoot .btn { min-height: 44px; }
+  .kbd { padding-top: 4px; }
+  .key { height: 42px; }
+  .write { min-height: 96px; }
+}
 .finish { display: flex; flex-direction: column; align-items: center; gap: 24px; padding-top: 12vh; text-align: center; }
 .finish h2 { font-size: var(--fs-title); }
 

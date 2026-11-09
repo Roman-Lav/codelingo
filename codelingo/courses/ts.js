@@ -1,4 +1,4 @@
-C('ts', 'TypeScript', 'TS', [':', '(', ')', '{', '}', '[', ']', '<', '>', '=', '|', '?', '"', ';', '.', 'Tab'], [
+C('ts', 'TypeScript', 'TS', [
   L('Basic types§Базовые типы§Базові типи§Základní typy', [
     M('What is TypeScript?§Что такое TypeScript?§Що таке TypeScript?§Co je TypeScript?', '', ['~JavaScript with types§JavaScript с типами§JavaScript з типами§JavaScript s typy', '~A database§База данных§База даних§Databáze', '~A CSS framework§CSS-фреймворк§CSS-фреймворк§CSS framework', '~A browser§Браузер§Браузер§Prohlížeč']),
     F('Type annotation§Аннотация типа§Анотація типу§Typová anotace', 'let age___ number = 25;', [':']),

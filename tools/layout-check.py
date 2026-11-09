@@ -9,9 +9,11 @@ insets (notch / home indicator), walks through the app's screens and measures:
   covered    content hidden behind the fixed tab bar or lesson footer
   clipped    text cut off inside its box
   band       empty band under the course grid, or course cards of different size (R10)
-  void       typed task: symbol bar not docked on the footer, or empty band under the code field
+  void       typed task: empty band under the code field
+  keyboard   typed task (R13): keyboard not docked under Check at the screen bottom, task text or
+             Check not visible, keys under 42px tall
   overlap    sibling elements drawn on top of each other
-  tap        tap target smaller than 44x44
+  tap        tap target smaller than 44x44 (keyboard keys: R4 exception for width, height >= 42)
 Screenshots (viewport-sized, like a phone shows it) go to dist/layout/<device>/<screen>.png.
 
 Uses the Chrome DevTools client from .claude/skills/responsive-check/scripts/shoot.py.
@@ -48,7 +50,7 @@ DEVICES = {
     "ipad":       (820, 1180, 2, 24, 20, 0, 0, True),
     "desktop":    (1280, 800, 1, 0, 0, 0, 0, False),
 }
-SCREENS = ["learn", "course", "lesson", "lesson-checked", "lesson-hint", "lesson-typed", "profile", "settings"]
+SCREENS = ["learn", "course", "lesson", "lesson-checked", "lesson-hint", "lesson-fill", "lesson-write", "profile", "settings"]
 
 # Navigation: each screen is reached from a fresh home screen.
 NAV_JS = r"""
@@ -56,9 +58,21 @@ NAV_JS = r"""
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const $ = (s) => document.querySelector(s);
   const click = (el) => { if (!el) throw new Error('missing element for ' + screen); el.click(); };
-  const typedCourse = () => {
-    const c = window.COURSES.find((x) => x.lessons[0].tasks.some((t) => t.t === 'f' || t.t === 'w'));
-    return c ? c.id : window.COURSES[0].id;
+  // R13: the longest real fill / write task (stress case) is put first in lesson 1 of its course.
+  const typedCourse = (type) => {
+    let best = null;
+    window.COURSES.forEach((c) => c.lessons.forEach((l) => l.tasks.forEach((t) => {
+      if (t.t !== type) return;
+      const size = (t.q || '').length + (t.c || '').length + String(t.a[0]).length;
+      if (!best || size > best.size) best = { c, t, size };
+    })));
+    best.c.lessons[0].tasks.unshift(best.t);
+    return best.c.id;
+  };
+  const tapKey = (k) => {
+    const el = document.querySelector(`#kbd .key[data-k="${CSS.escape(k)}"]`); if (!el) return;
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 9, pointerType: 'touch' }));
+    el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 9, pointerType: 'touch' }));
   };
   const openLesson = async (id) => {
     click($(`[data-act="course"][data-id="${id}"]`)); await sleep(50);
@@ -68,20 +82,18 @@ NAV_JS = r"""
   if (screen === 'course') { click($('[data-act="course"]')); return 'ok'; }
   if (screen === 'profile' || screen === 'settings') { click($(`[data-act="tab"][data-tab="${screen}"]`)); return 'ok'; }
   if (screen.startsWith('lesson')) {
-    await openLesson(screen === 'lesson-typed' ? typedCourse() : window.COURSES[0].id);
+    const typed = { 'lesson-fill': 'f', 'lesson-write': 'w' }[screen];
+    await openLesson(typed ? typedCourse(typed) : window.COURSES[0].id);
     if (screen === 'lesson-hint') { click($('#lmascot')); await sleep(200); return 'ok'; }
     const answerAny = () => {
       const opt = document.querySelector('.opt:not([disabled])');
       const tok = document.querySelector('.bank .tok:not([disabled])');
-      const ans = $('#ans');
-      if (opt) opt.click(); else if (tok) tok.click();
-      else if (ans) { ans.value = 'x'; ans.dispatchEvent(new Event('input', { bubbles: true })); }
+      if (opt) opt.click(); else if (tok) tok.click(); else tapKey('x');
     };
     if (screen === 'lesson-checked') { answerAny(); await sleep(50); click($('#checkBtn')); await sleep(500); return 'ok'; }
-    if (screen === 'lesson-typed') {
-      for (let i = 0; i < 30 && !$('#ans'); i++) { answerAny(); await sleep(30); click($('#checkBtn')); await sleep(450); click($('#checkBtn')); await sleep(80); }
-      if (!$('#ans')) return 'no typed task reached';
-      $('#ans').focus();
+    if (typed) {
+      if (!$('#ans') || $('#kbd').hidden) return 'no typed task with the keyboard';
+      'abc'.split('').forEach(tapKey); await sleep(50);
     }
     return 'ok';
   }
@@ -121,14 +133,14 @@ MEASURE_JS = r"""
   if (sw > vw + 1) out.push(['overflow', `page is ${sw}px wide, screen ${vw}px`]);
   for (const el of els) {
     const r = el.getBoundingClientRect();
-    if (el.closest('pre, .symbar, .bank, .slot')) continue; // horizontally scrollable on purpose
+    if (el.closest('pre, .bank, .slot')) continue; // horizontally scrollable on purpose
     if (r.right > vw + 1 || r.left < -1) out.push(['offscreen', `${name(el)} spans ${Math.round(r.left)}..${Math.round(r.right)}px`]);
   }
 
   // safe area: interactive content must stay out of the notch and home-indicator zones
   for (const el of els.filter((e) => e.matches('button, input, textarea, select, h1, .bar'))) {
     const r = el.getBoundingClientRect();
-    if (el.closest('pre, .symbar, .bank, .slot')) continue; // horizontally scrollable on purpose
+    if (el.closest('pre, .bank, .slot')) continue; // horizontally scrollable on purpose
     // Side insets (landscape notch) apply to everything, including content of .screen.
     if (r.left < inset.left - 0.5 || r.right > vw - inset.right + 0.5) out.push(['safe-area', `${name(el)} spans ${Math.round(r.left)}..${Math.round(r.right)}px, side insets ${inset.left}/${inset.right}`]);
     if (el.closest('.screen') && !inLesson) continue; // scrolls under the status bar by design; top/bottom checked via #screen below
@@ -158,13 +170,26 @@ MEASURE_JS = r"""
   } else {
     const lb = document.querySelector('#lessonBody').getBoundingClientRect(), lf = document.querySelector('.lfoot').getBoundingClientRect();
     if (lb.bottom > lf.top + 0.5) out.push(['covered', `#lessonBody ends at ${Math.round(lb.bottom)}px, under the footer (top ${Math.round(lf.top)}px)`]);
-    // Typed tasks: the symbol bar is docked right on the footer, and a textarea fills the free height (no void).
-    const dock = document.querySelector('#symdock');
-    if (dock && !dock.hidden && visible(dock)) {
-      const dr = dock.getBoundingClientRect();
-      const sheet = document.querySelector('#sheet');
-      const below = sheet && !sheet.hidden ? sheet.getBoundingClientRect().top : lf.top;
-      if (Math.abs(below - dr.bottom) > 1) out.push(['void', `symbol bar ends ${Math.round(below - dr.bottom)}px above the footer`]);
+    // R13 typed tasks: the keyboard is docked at the bottom with Check right on top of it; the task text
+    // (first line of the question) and Check stay visible; the lesson body scrolls in the rest.
+    const kbd = document.querySelector('#kbd');
+    if (kbd && !kbd.hidden && visible(kbd)) {
+      const kr = kbd.getBoundingClientRect();
+      if (Math.abs(kr.bottom - vh) > 1) out.push(['keyboard', `keyboard bottom ${Math.round(kr.bottom)}px, screen ${vh}px`]);
+      if (Math.abs(lf.bottom - kr.top) > 1) out.push(['keyboard', `Check footer ends at ${Math.round(lf.bottom)}px, keyboard starts at ${Math.round(kr.top)}px`]);
+      const btn = document.querySelector('#checkBtn').getBoundingClientRect();
+      if (btn.top < 0 || btn.bottom > kr.top + 0.5 || btn.height < 43.5) out.push(['keyboard', `Check not fully visible above the keyboard (${Math.round(btn.top)}..${Math.round(btn.bottom)}, h ${Math.round(btn.height)})`]);
+      const lbEl0 = document.querySelector('#lessonBody'); lbEl0.scrollTop = 0;
+      const q = document.querySelector('#lessonBody .q');
+      if (q) {
+        const qr = q.getBoundingClientRect(); const line = parseFloat(getComputedStyle(q).lineHeight) || 24;
+        if (qr.top < lb.top - 0.5 || qr.top + line > lb.bottom + 0.5) out.push(['keyboard', `task text not visible: first line ${Math.round(qr.top)}..${Math.round(qr.top + line)}, body ${Math.round(lb.top)}..${Math.round(lb.bottom)}`]);
+      }
+      if (lbEl0.scrollHeight > lbEl0.clientHeight + 1 && !/(auto|scroll)/.test(getComputedStyle(lbEl0).overflowY)) out.push(['keyboard', 'lesson body overflows but does not scroll']);
+      for (const k of kbd.querySelectorAll('.key')) {
+        const r = k.getBoundingClientRect();
+        if (r.height < 41.5) out.push(['keyboard', `key ${k.dataset.k} is ${Math.round(r.height)}px tall`]);
+      }
     }
     const ta = document.querySelector('#lessonBody .write'), lbEl = document.querySelector('#lessonBody');
     if (ta && lbEl.scrollHeight <= lbEl.clientHeight + 1) {
@@ -185,7 +210,9 @@ MEASURE_JS = r"""
     const foot = document.querySelector('.lfoot').getBoundingClientRect();
     if (foot.bottom > vh + 0.5) out.push(['covered', `lesson footer bottom ${Math.round(foot.bottom)}px is below the screen (${vh}px)`]);
     const body = document.querySelector('#lessonBody');
-    if (body.getBoundingClientRect().height < 120) out.push(['covered', `lesson body only ${Math.round(body.getBoundingClientRect().height)}px tall`]);
+    // With the keyboard up the body may be short (phone landscape); it then has to show the task text (checked above).
+    const kbdOn = !document.querySelector('#kbd').hidden;
+    if (body.getBoundingClientRect().height < (kbdOn ? 48 : 120)) out.push(['covered', `lesson body only ${Math.round(body.getBoundingClientRect().height)}px tall`]);
   }
 
   // R10: the course grid fills the content height (no empty band under it); cards are equal.
@@ -203,7 +230,7 @@ MEASURE_JS = r"""
   for (const el of els) {
     if (!el.childNodes.length || ![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
     const cs = getComputedStyle(el);
-    if (/(auto|scroll)/.test(cs.overflowX) || el.closest('pre, .symbar, .bank, .slot, .sr-only')) continue; // .sr-only: screen-reader text, clipped on purpose
+    if (/(auto|scroll)/.test(cs.overflowX) || el.closest('pre, .bank, .slot, .sr-only')) continue; // .sr-only: screen-reader text, clipped on purpose
     if (el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0 && cs.display !== 'inline') out.push(['clipped', `${name(el)} text ${el.scrollWidth}px in ${el.clientWidth}px: "${el.textContent.trim().slice(0, 30)}"`]);
   }
 
@@ -220,8 +247,7 @@ MEASURE_JS = r"""
   // tap targets
   for (const el of els.filter((e) => e.matches('button:not([disabled]), select, input:not([type=hidden]), textarea, label.sw'))) {
     if (el.matches('input[type=checkbox]') && el.closest('label.sw')) continue;
-    // B4: a tap anywhere on the code block focuses the blank, so the block is its tap target.
-    if (el.matches('input.fill') && el.closest('pre.code') && el.closest('pre.code').getBoundingClientRect().height >= 43.5) continue;
+    if (el.matches('#kbd .key')) continue; // R13: R4 exception for key width; height checked under "keyboard"
     const r = el.getBoundingClientRect();
     if (r.width < 43.5 || r.height < 43.5) out.push(['tap', `${name(el)} is ${Math.round(r.width)}x${Math.round(r.height)}px`]);
   }

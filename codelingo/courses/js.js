@@ -1,4 +1,4 @@
-C('js', 'JavaScript', 'JS', ['(', ')', '{', '}', '[', ']', ';', '=', '.', '"', '`', '$', '>', '<', '!', '&', '|', 'Tab'], [
+C('js', 'JavaScript', 'JS', [
   L('Variables§Переменные§Змінні§Proměnné', [
     M('Which keyword declares a constant?§Какое слово объявляет константу?§Яке слово оголошує константу?§Které klíčové slovo deklaruje konstantu?', '', ['const', 'let', 'var', 'fix']),
     W('Declare a variable age = 20 using let§Объявите переменную age = 20 через let§Оголосіть змінну age = 20 через let§Deklarujte proměnnou age = 20 pomocí let', ['let age = 20']),
